@@ -1,0 +1,34 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "type": "shell",
+            "command": "C:/ProgramData/chocolatey/bin/make.exe",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$gcc"],
+            "detail": "Сборка проекта с помощью Makefile"
+        },
+        {
+            "label": "flash",
+            "type": "shell",
+            "command": "C:/ProgramData/chocolatey/bin/make.exe",
+            "args": ["flash"],
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "Прошивка STM32"
+        },
+        {
+            "label": "clean",
+            "type": "shell",
+            "command": "C:/ProgramData/chocolatey/bin/make.exe",
+            "args": ["clean"],
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "Очистка проекта"
+        }
+    ]
+}

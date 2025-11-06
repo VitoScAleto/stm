@@ -1,0 +1,32 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "STM32 Debug",
+            "cwd": "${workspaceRoot}",
+            "executable": "${workspaceRoot}/build/stm32f103c6_project.elf",
+            "request": "launch",
+            "type": "cortex-debug",
+            "servertype": "openocd",
+            
+            // УКАЗЫВАЕМ ПУТИ:
+            "serverpath": "C:/Users/pushk/Desktop/Stm_SWD/OpenOCD-20250710-0.12.0/bin/openocd.exe",
+            "armToolchainPath": "C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/14.3 rel1/bin/",
+            
+            // Конфигурация OpenOCD
+            "configFiles": [
+                "interface/stlink.cfg",
+                "target/stm32f1x.cfg"
+            ],
+            "device": "STM32F103C6",
+            
+            // Настройки отладки
+           "runToEntryPoint": "main",
+            "preLaunchTask": "cmake-build",
+            
+            // Дополнительные опции
+            "showDevDebugOutput": "raw",
+            "svdFile": "${workspaceFolder}/STM32F103.svd"
+        }
+    ]
+}
