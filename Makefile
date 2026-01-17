@@ -5,7 +5,7 @@ PROJECT = stm32f103_project
 CC = C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/14.3 rel1/bin/arm-none-eabi-gcc.exe
 OBJCOPY = C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/14.3 rel1/bin/arm-none-eabi-objcopy.exe
 SIZE = C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/14.3 rel1/bin/arm-none-eabi-size.exe
-OPENOCD = C:/Users/pushk/Desktop/Stm_SWD/OpenOCD-20250710-0.12.0/bin/openocd.exe
+OPENOCD = C:/Users/pushk/Desktop/SWD/Stm_SWD/OpenOCD-20250710-0.12.0/bin/openocd.exe
 MKDIR = powershell -Command "New-Item -ItemType Directory -Force -Path"
 
 # MCU settings
