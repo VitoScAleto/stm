@@ -44,16 +44,30 @@
 #define NRST_HIGH() GPIOB->BSRR = (1 << NRST_PIN)
 #define NRST_LOW() GPIOB->BSRR = (1 << (16+NRST_PIN))
 
-static void delay_us(uint32_t us) {
-    // цикл для задержки
-    // На 72 МГц: ~72 цикла на 1 мкс
-    us *= 72;
-    while(us--) __NOP();
+
+static __INLINE void delay_us(uint32_t us) {
+    SysTick->LOAD = us * (SystemCoreClock / 1000000) - 1;
+    SysTick->VAL = 0;                 // Сбрасываем текущий счётчик
+    SysTick->CTRL = SysTick_CTRL_ENABLE_Msk | SysTick_CTRL_CLKSOURCE_Msk; // источник = ядро
+
+    // Ждем переполнения
+    while(!(SysTick->CTRL & SysTick_CTRL_COUNTFLAG_Msk));
+
+    SysTick->CTRL = 0; 
 }
 
-static void delay_ms(uint32_t ms) {
-    while(ms--) delay_us(1000);
+static void delay_ns(uint32_t ns) {
+    uint32_t ticks = (ns * SystemCoreClock) / 1000000000;
+    TIM2->CNT = 0;
+    TIM2->CR1 |= TIM_CR1_CEN; // включаем таймер
+    while(TIM2->CNT < ticks);
+    TIM2->CR1 &= ~TIM_CR1_CEN;
 }
+
+static __INLINE void delay_ms(uint32_t ms) {
+    while(ms--) delay_us(999);
+}
+
 
 static void led_on(void) {
     LED_PORT->BSRR = (1 << LED_PIN);
@@ -268,7 +282,7 @@ static uint32_t swd_read_ap(uint8_t ap, uint8_t addr) {
     // Сначала выбираем AP
     swd_write_dp(DP_SELECT, (ap << 24) | ((addr & 0xF0) << 4));
     
-    // Читаем из AP
+    // Читаем из AP 111
     uint8_t req = (1 << 0) |          // START
                   (1 << 1) |          // APnDP=1 (AP)
                   (1 << 2) |          // RnW=1 (Read)
@@ -406,17 +420,27 @@ int main(void) {
     delay_ms(10);
     
     
-    
-    //Инициализация SWD
-    if(!swd_init_debug()) {
-        // Ошибка
-        while(1) {
-            led_toggle();
-            delay_ms(10);
+    while(1)
+    {
+        SWDIO_HIGH();
+        delay_ns(100);
+        
+        SWDIO_LOW();
+        delay_ns(100);
+        
+
+       
+    }
+    // //Инициализация SWD
+    // if(!swd_init_debug()) {
+    //     // Ошибка
+    //     while(1) {
+    //         led_toggle();
+    //         delay_ms(10);
         
     
-        }
-    }
+    //     }
+    // }
 
     
 // //     Читаем IDCODE
@@ -507,4 +531,3 @@ int main(void) {
 //         }
 //     }
 }
-
