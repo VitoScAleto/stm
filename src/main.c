@@ -45,40 +45,73 @@
 #define NRST_LOW() GPIOB->BSRR = (1 << (16+NRST_PIN))
 
 
-static __INLINE void delay_us(uint32_t us) {
-    SysTick->LOAD = us * (SystemCoreClock / 1000000) - 1;
-    SysTick->VAL = 0;                 // Сбрасываем текущий счётчик
-    SysTick->CTRL = SysTick_CTRL_ENABLE_Msk | SysTick_CTRL_CLKSOURCE_Msk; // источник = ядро
+// static __INLINE void delay_us(uint32_t us) {
+//     SysTick->LOAD = us * (SystemCoreClock / 1000000) - 1;
+//     SysTick->VAL = 0;                 // Сбрасываем текущий счётчик
+//     SysTick->CTRL = SysTick_CTRL_ENABLE_Msk | SysTick_CTRL_CLKSOURCE_Msk; // источник = ядро
 
-    // Ждем переполнения
-    while(!(SysTick->CTRL & SysTick_CTRL_COUNTFLAG_Msk));
+//     // Ждем переполнения
+//     while(!(SysTick->CTRL & SysTick_CTRL_COUNTFLAG_Msk));
 
-    SysTick->CTRL = 0; 
-}
+//     SysTick->CTRL = 0; 
+// }
 
-static __INLINE void delay_ns(uint32_t ns) {
-    uint32_t ticks = (ns * SystemCoreClock) / 1000000000;
-    TIM2->CNT = 0;
-    TIM2->CR1 |= TIM_CR1_CEN; // включаем таймер
-    while(TIM2->CNT < ticks);
-    TIM2->CR1 &= ~TIM_CR1_CEN;
-}
+// static __INLINE void delay_ns(uint32_t ns) {
+//     uint32_t ticks = (ns * SystemCoreClock) / 1000000000;
+//     TIM2->CNT = 0;
+//     TIM2->CR1 |= TIM_CR1_CEN; // включаем таймер
+//     while(TIM2->CNT < ticks);
+//     TIM2->CR1 &= ~TIM_CR1_CEN;
+// }
 
-static __INLINE void delay_ms(uint32_t ms) {
-    while(ms--) delay_us(999);
-}
+// static __INLINE void delay_ms(uint32_t ms) {
+//     while(ms--) delay_us(999);
+// }
 
-static inline void swd_half_delay(void)
+// static inline void swd_half_delay(void)
+// {
+//     /* При 72 МГц, для SWD 4 МГц: 
+//      * Полутакта = 125 нс ≈ 9 циклов
+//      * Вычитаем накладные расходы (~4 цикла) */
+//     __asm volatile(
+//         "nop\n" "nop\n" "nop\n" "nop\n"
+//         ::: "memory"
+//     );
+// }
+
+// static inline void swd_clock_cycle(void)
+// {
+//     SWCLK_LOW();
+//     __asm volatile(
+//         "nop\n" "nop\n" "nop\n" "nop\n"
+//         ::: "memory"
+//     );
+//     SWCLK_HIGH();
+//     __asm volatile(
+//         "nop\n" "nop\n" "nop\n" "nop\n" 
+//         ::: "memory"
+//     );
+// }
+
+static void dwt_init(void)
 {
-    /* При 72 МГц, для SWD 4 МГц: 
-     * Полутакта = 125 нс ≈ 9 циклов
-     * Вычитаем накладные расходы (~4 цикла) */
-    __asm volatile(
-        "nop\n" "nop\n" "nop\n" "nop\n" "nop\n"
-        ::: "memory"
-    );
+    // Разрешить доступ к DWT
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+
+    // Сбросить счётчик
+    DWT->CYCCNT = 0;
+
+    // Включить счётчик тактов
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 }
 
+static inline void delay_us(uint32_t us)
+{
+    uint32_t cycles = us * (SystemCoreClock / 1000000);
+    uint32_t start = DWT->CYCCNT;
+
+    while ((DWT->CYCCNT - start) < cycles);
+}
 
 static void led_on(void) {
     LED_PORT->BSRR = (1 << LED_PIN);
@@ -125,36 +158,39 @@ static void swd_io_dir_output(void) {
     SWDIO_PORT->CRH |= GPIO_CRH_MODE9_1 | GPIO_CRH_MODE9_0; // 50 MHz
 }
 
-static void swd_io_dir_input(void) {
-    // SWDIO как вход
+static void swd_io_dir_input(void)
+{
     SWDIO_PORT->CRH &= ~(GPIO_CRH_CNF9 | GPIO_CRH_MODE9);
-    SWDIO_PORT->CRH |= GPIO_CRH_CNF9_0; // Floating input
+    SWDIO_PORT->CRH |= GPIO_CRH_CNF9_1;      // input pull-up/pull-down
+    SWDIO_PORT->ODR |= (1 << SWDIO_PIN);     // pull-up
 }
 
-static void swd_write_bit(uint8_t bit) {
-    if(bit == 1) {
-       SWDIO_HIGH();  // HIGH
-    } else {
-       SWDIO_LOW();   // LOW
-    }
-    
-    SWCLK_LOW();  // CLK = 0
-    delay_us(2);
-    SWCLK_HIGH(); // CLK = 1
-    delay_us(2);
+
+static void swd_write_bit(uint8_t bit)
+{
+    if(bit) SWDIO_HIGH();
+    else SWDIO_LOW();
+
+    // Тактирование
+    SWCLK_LOW();
+    delay_us(1);
+
+    SWCLK_HIGH();
+     delay_us(1);
 }
 
 static uint8_t swd_read_bit(void)
 {
     uint8_t bit;
-
+    // SWCLK LOW
     SWCLK_LOW();
-    delay_us(2);
+    delay_us(1);
 
-    SWCLK_HIGH();                 
-    delay_us(2);
+    // SWCLK HIGH — на фронте данные стабильны, читаем здесь
+    SWCLK_HIGH();
+     delay_us(1);
 
-    bit = (SWDIO_PORT->IDR >> SWDIO_PIN) & 1;  
+    bit = (SWDIO_PORT->IDR >> SWDIO_PIN) & 1;
 
     return bit;
 }
@@ -162,80 +198,67 @@ static uint8_t swd_read_bit(void)
 static void swd_turnaround(void)
 {
     SWCLK_LOW();
-    delay_us(2);
-    SWCLK_HIGH();                 
-    delay_us(2);
+     delay_us(1);
+
+    SWCLK_HIGH();
+     delay_us(1);
+
 }
 
-// ================= SWD протокол =================
-static uint32_t swd_transfer(uint8_t req, uint32_t data) {//FIXME: Пересмотреть
-    uint8_t ack;
+// -------------------------
+// Основная функция передачи SWD
+// -------------------------
+static uint32_t swd_transfer(uint8_t req, uint32_t data)
+{
     uint32_t val = 0;
-    uint8_t parity;
-    
-    //Формируем запрос с парностью
-    parity = __builtin_popcount(req & 0x1F) & 1;
-    req = (req & 0xDF) | (parity << 5);
+    uint8_t ack;
 
-    //FIXME: missing park bit
-
-    // 2. Отправляем 8 бит запроса
+    // 1️⃣ Отправляем 8 бит запроса
     swd_io_dir_output();
-    for(int i = 0; i < 8; i++) {
+    for(int i = 0; i < 8; i++)
         swd_write_bit((req >> i) & 1);
-    }
+
+    // 2️⃣ Переключаемся на вход, делаем turnaround
     swd_io_dir_input();
-
-    
-    // 3. Turnaround цикл
     swd_turnaround();
-    
 
-    // 4. Читаем ACK (3 бита)
+    // // 3️⃣ Читаем 3-битный ACK
     ack = 0;
-    for(int i = 0; i < 3; i++) {
+    for(int i = 0; i < 3; i++)
         ack |= (swd_read_bit() << i);
-    }
-    
-    if(ack != 1) { // 001 = OK
-        return 0xFFFFFFFF; // Ошибка
-    }
-   
 
-    // 5. Передача данных
-    if(req & (1 << 2)) { // Чтение (RnW=1)
-        // Читаем 32 бита данных
-        for(int i = 0; i < 32; i++) {
-            if(swd_read_bit()) {
-                val |= (1 << i);
-            }
-        }
-        // Читаем парность (пропускаем)
-        swd_read_bit();
-    } else { // Запись (RnW=0)
+    if(ack != 0b100)  // OK
+        return 0xFFFFFFFF;
 
+    // 4️⃣ Чтение или запись данных
+    if(req & (1 << 2)) // Read
+    {
+        val = 0;
+        for(int i = 0; i < 32; i++)
+            val |= (swd_read_bit() << i);
+
+        // parity бит
+        // swd_read_bit();
+
+        // После чтения SWDIO оставляем входом
+    }
+    else // Write
+    {
+        // Передача данных: turnaround на выход
         swd_turnaround();
-        // Пишем 32 бита данных
         swd_io_dir_output();
 
-        for(int i = 0; i < 32; i++) {
+        for(int i = 0; i < 32; i++)
             swd_write_bit((data >> i) & 1);
-        }
-        // Пишем парность
-        parity = __builtin_popcount(data) & 1;
+
+        // parity бит
+        uint8_t parity = __builtin_popcount(data) & 1;
         swd_write_bit(parity);
-
-        return 0;
     }
-
-    
-    // 6. Turnaround обратно
-    // swd_turnaround();
-    // swd_io_dir_output();
-   
 
     return val;
 }
+
 
 static void swd_line_reset(void) {
     // 1. Настраиваем SWDIO как выход
@@ -247,9 +270,11 @@ static void swd_line_reset(void) {
     // 3. Генерируем 55+ импульсов SWCLK при SWDIO=1
     for(int i = 0; i < 55; i++) {
         SWCLK_LOW();
-        delay_us(2);
+        delay_us(1);
+
         SWCLK_HIGH();
-        delay_us(2);
+         delay_us(1);
+
     }
 }
 
@@ -266,9 +291,10 @@ static void swd_jtag_to_swd(void) {
         }
 
         SWCLK_LOW();
-        delay_us(2);
+         delay_us(1);
+
         SWCLK_HIGH();
-        delay_us(2);
+         delay_us(1);
 
         switch_sequence >>= 1;
     }
@@ -282,7 +308,10 @@ static uint32_t swd_read_idcode(void) {
                   (0 << 1) |          // APnDP=0 (DP)
                   (1 << 2) |          // RnW=1 (Read)
                   (0 << 3) |          // A2=0
-                  (0 << 4);           // A3=0
+                  (0 << 4) |            // A3=0
+                  (1 << 5) |            // parity 1
+                  (0<< 6)   |               // stop 0
+                  (1 << 7);      // park
     
     return swd_transfer(req, 0);
 }
@@ -301,16 +330,17 @@ static void swd_write_dp(uint8_t addr, uint32_t data) {
     uint8_t req = (1 << 0) |          // START
                   (0 << 1) |          // APnDP=0 (DP)
                   (0 << 2) |          // RnW=0 (Write)
-                  ((addr & 0x4) ? (1 << 3) : 0) |  // A2
-                  ((addr & 0x8) ? (1 << 4) : 0);   // A3
+                  ((addr & 0x4) ? (1 << 3) : 0) |  // A2 = 1
+                  ((addr & 0x8) ? (1 << 4) : 0);   // A3 = 0
+                    
     //FIXME: delete delay after test
-    +
+
     swd_transfer(req, data);
 }
 
 static void swd_write_ap(uint8_t ap, uint8_t addr, uint32_t data) {
     // Сначала выбираем AP
-    //swd_write_dp(DP_SELECT, (ap << 24) | ((addr & 0xF0) << 4));
+    swd_write_dp(DP_SELECT, (ap << 24) | ((addr & 0xF0) << 4));
     
     // Пишем в AP
     uint8_t req = (1 << 0) |          // START
@@ -344,30 +374,34 @@ static int swd_init_debug(void) {
     
     swd_jtag_to_swd();
     swd_line_reset();
+
+    SWDIO_LOW();
+    swd_turnaround();
+    swd_turnaround();
     // Читаем IDCODE
     uint32_t id = swd_read_idcode();
     if(id == 0xFFFFFFFF || id == 0) {
         return 0; // Ошибка
     }
     
-    // Включаем питание отладки
-    swd_write_dp(DP_CTRLSTAT, CSYSPWRUPREQ | CDBGPWRUPREQ);
+    // // Включаем питание отладки
+    // swd_write_dp(DP_CTRLSTAT, CSYSPWRUPREQ | CDBGPWRUPREQ);
     
-    // Ждем подтверждения
-    uint32_t timeout = 1000;
-    while(timeout--) {
-        uint32_t stat = swd_read_dp(DP_CTRLSTAT);
-        if((stat & (CSYSPWRUPACK | CDBGPWRUPACK)) == (CSYSPWRUPACK | CDBGPWRUPACK)) {
-            break;
-        }
-        delay_us(10);
-    }
+    // // Ждем подтверждения
+    // uint32_t timeout = 1000;
+    // while(timeout--) {
+    //     uint32_t stat = swd_read_dp(DP_CTRLSTAT);
+    //     if((stat & (CSYSPWRUPACK | CDBGPWRUPACK)) == (CSYSPWRUPACK | CDBGPWRUPACK)) {
+    //         break;
+    //     }
+    //     delay_us(10);
+    // }
     
-    // Выбираем AP #0
-    swd_write_dp(DP_SELECT, 0);
+    // // Выбираем AP #0
+    // swd_write_dp(DP_SELECT, 0);
     
-    // Настраиваем AP (32-bit access, auto-increment)
-     swd_write_ap(0, AP_CSW, 0x23000012);
+    // // Настраиваем AP (32-bit access, auto-increment)
+    //  swd_write_ap(0, AP_CSW, 0x23000012);
     
     return 1; // Успех
 }
@@ -441,46 +475,44 @@ int main(void) {
 
     // Инициализация программатора
     swd_gpio_init();
-    led_on();
-    delay_ms(100);
-    led_off();
    
-    // Сброс целевой платы
-    NRST_PORT->BRR = (1 << NRST_PIN);  // NRST = 0
-    delay_ms(10);
-    NRST_PORT->BSRR = (1 << NRST_PIN); // NRST = 1
-    delay_ms(10);
+     dwt_init();
 
-    
+  // 1. Держим target в reset
+NRST_PORT->BRR = (1 << NRST_PIN);  // NRST = 0
 
-   // Инициализация SWD
-    if(!swd_init_debug()) {
-        // Ошибка
-        while(1) {
-            led_toggle();
-            delay_ms(300);
-        
-    
-        }
+
+// 2. Инициализация SWD ПОКА target в reset
+if(!swd_init_debug())
+{
+    while(1)
+    {
+        led_toggle();
+        delay_us(300000);
     }
+}
+
+// 3. Отпускаем reset
+NRST_PORT->BSRR = (1 << NRST_PIN); // NRST = 1
+delay_us(10);
 
     
 //     Читаем IDCODE
  //  FIXME: нужен ли здесь icode ? 
   // uint32_t id = swd_read_idcode();
     
-// //     //адрес начала Flash для STM32F1)
-    //   uint32_t flash_base = 0x40022000;
-    //  uint32_t target_flash_start = 0x08000000;
+//     //адрес начала Flash для STM32F1)
+//       uint32_t flash_base = 0x40022000;
+//      uint32_t target_flash_start = 0x08000000;
     
-    // Разблокируем Flash целевой платы
-    //flash_unlock(flash_base);
+//     //Разблокируем Flash целевой платы
+//     flash_unlock(flash_base);
     
 //     // Стираем Flash
 //     flash_erase_all(flash_base);
     
 // //     // тестовых данных
-//   // uint32_t test_data[] = {
+//    uint32_t test_data[] = {
 //     // таблица векторов прерываний
 //     0x200027FF,  // SP: 0x200027FF
 //     0x08000201,  // Reset: 0x08000201
