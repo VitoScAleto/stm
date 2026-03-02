@@ -14,6 +14,8 @@
 #define LED_PIN      13
 
 // Адреса регистров отладки
+#define DP_RDBUFF 0x0C
+#define DP_ABORT 0x00
 #define DP_IDCODE    0x00
 #define DP_CTRLSTAT  0x04
 #define DP_SELECT    0x08
@@ -205,6 +207,7 @@ static void swd_turnaround(void)
 
 }
 
+
 // -------------------------
 // Основная функция передачи SWD
 // -------------------------
@@ -213,47 +216,54 @@ static uint32_t swd_transfer(uint8_t req, uint32_t data)
     uint32_t val = 0;
     uint8_t ack;
 
-    // 1️⃣ Отправляем 8 бит запроса
+    // 1. Отправка запроса
     swd_io_dir_output();
     for(int i = 0; i < 8; i++)
         swd_write_bit((req >> i) & 1);
 
-    // 2️⃣ Переключаемся на вход, делаем turnaround
-    swd_io_dir_input();
+   
+    // 2. Turnaround к target
     swd_turnaround();
+    swd_io_dir_input();
 
-    // // 3️⃣ Читаем 3-битный ACK
+    // 3. Читаем ACK
     ack = 0;
     for(int i = 0; i < 3; i++)
         ack |= (swd_read_bit() << i);
 
-    if(ack != 0b100)  // OK
-        return 0xFFFFFFFF;
-
-    // 4️⃣ Чтение или запись данных
-    if(req & (1 << 2)) // Read
+       
+    if(ack != 0b100)
     {
-        val = 0;
+        swd_turnaround();
+        swd_io_dir_output();
+        return 0xFFFFFFFF;
+    }
+
+    if(req & (1 << 2)) // READ
+    {
         for(int i = 0; i < 32; i++)
             val |= (swd_read_bit() << i);
 
-        // parity бит
-        // swd_read_bit();
+        swd_read_bit(); // parity
 
-        // После чтения SWDIO оставляем входом
+        // ОБЯЗАТЕЛЬНЫЙ turnaround обратно
+        swd_turnaround();
+        swd_io_dir_output();
     }
-    else // Write
+    else // WRITE
     {
-        // Передача данных: turnaround на выход
+        // turnaround к output
         swd_turnaround();
         swd_io_dir_output();
 
         for(int i = 0; i < 32; i++)
             swd_write_bit((data >> i) & 1);
 
-        // parity бит
         uint8_t parity = __builtin_popcount(data) & 1;
         swd_write_bit(parity);
+
+        // 1 idle цикл
+        swd_write_bit(0);
     }
 
     return val;
@@ -302,6 +312,26 @@ static void swd_jtag_to_swd(void) {
 }
 
 // ================= ВЫСОКОУРОВНЕВЫЕ ФУНКЦИИ =================
+static uint8_t swd_make_request(uint8_t apndp, uint8_t rnw, uint8_t addr)
+{
+    uint8_t a2 = (addr >> 2) & 1;
+    uint8_t a3 = (addr >> 3) & 1;
+
+    uint8_t parity = (apndp ^ rnw ^ a2 ^ a3) & 1;
+
+    uint8_t req = 0;
+    req |= (1 << 0);            // Start
+    req |= (apndp << 1);        // APnDP
+    req |= (rnw << 2);          // RnW
+    req |= (a2 << 3);           // A2
+    req |= (a3 << 4);           // A3
+    req |= (parity << 5);       // Parity
+    req |= (0 << 6);            // Stop (0)
+    req |= (1 << 7);            // Park (1)
+
+    return req;
+}
+
 static uint32_t swd_read_idcode(void) {
     // Чтение IDCODE (DPACC, READ, адрес 0)
     uint8_t req = (1 << 0) |          // START
@@ -316,54 +346,52 @@ static uint32_t swd_read_idcode(void) {
     return swd_transfer(req, 0);
 }
 
-static uint32_t swd_read_dp(uint8_t addr) {
-    uint8_t req = (1 << 0) |          // START
-                  (0 << 1) |          // APnDP=0 (DP)
-                  (1 << 2) |          // RnW=1 (Read)
-                  ((addr & 0x4) ? (1 << 3) : 0) |  // A2
-                  ((addr & 0x8) ? (1 << 4) : 0);   // A3
-    
+static uint32_t swd_read_dp(uint8_t addr)
+{
+    uint8_t req = swd_make_request(0, 1, addr); // DP, Read
     return swd_transfer(req, 0);
 }
 
-static void swd_write_dp(uint8_t addr, uint32_t data) {
-    uint8_t req = (1 << 0) |          // START
-                  (0 << 1) |          // APnDP=0 (DP)
-                  (0 << 2) |          // RnW=0 (Write)
-                  ((addr & 0x4) ? (1 << 3) : 0) |  // A2 = 1
-                  ((addr & 0x8) ? (1 << 4) : 0);   // A3 = 0
-                    
-    //FIXME: delete delay after test
+static void swd_write_dp(uint8_t addr, uint32_t data)
+{
+    uint8_t req = swd_make_request(0, 0, addr); // DP, Write
+    swd_transfer(req, data);
+}
+static void swd_clear_errors(void)
+{
+    // STKCMPCLR | STKERRCLR | WDERRCLR | ORUNERRCLR
+    swd_write_dp(DP_ABORT, 0x1E);
+}
 
+
+
+static void swd_write_ap(uint8_t ap, uint8_t addr, uint32_t data)
+{
+    swd_write_dp(DP_SELECT, (ap << 24) | ((addr & 0xF0) << 4));
+
+    uint8_t req = swd_make_request(1, 0, addr); // AP, Write
     swd_transfer(req, data);
 }
 
-static void swd_write_ap(uint8_t ap, uint8_t addr, uint32_t data) {
-    // Сначала выбираем AP
+static uint32_t swd_read_ap(uint8_t ap, uint8_t addr)
+{
+    // Выбор AP и банка
     swd_write_dp(DP_SELECT, (ap << 24) | ((addr & 0xF0) << 4));
-    
-    // Пишем в AP
-    uint8_t req = (1 << 0) |          // START
-                  (1 << 1) |          // APnDP=1 (AP)
-                  (0 << 2) |          // RnW=0 (Write)
-                  ((addr & 0x4) ? (1 << 3) : 0) |  // A2
-                  ((addr & 0x8) ? (1 << 4) : 0);   // A3
-    
-    swd_transfer(req, data);
-}
 
-static uint32_t swd_read_ap(uint8_t ap, uint8_t addr) {
-    // Сначала выбираем AP
-    swd_write_dp(DP_SELECT, (ap << 24) | ((addr & 0xF0) << 4));
-    
-    // Читаем из AP 
-    uint8_t req = (1 << 0) |          // START
-                  (1 << 1) |          // APnDP=1 (AP)
-                  (1 << 2) |          // RnW=1 (Read)
-                  ((addr & 0x4) ? (1 << 3) : 0) |  // A2
-                  ((addr & 0x8) ? (1 << 4) : 0);   // A3
-    
+    // 1️⃣ Запускаем AP read (данные ещё не здесь!)
+    uint8_t req = swd_make_request(1, 1, addr);
+    swd_transfer(req, 0);
+
+    // 2️⃣ Читаем результат из DP_RDBUFF
+    req = swd_make_request(0, 1, DP_RDBUFF);
     return swd_transfer(req, 0);
+}
+
+static uint32_t swd_mem_read(uint32_t addr) {
+    // Записываем адрес
+    swd_write_ap(0, AP_TAR, addr);
+    // Читаем данные
+    return swd_read_ap(0, AP_DRW);
 }
 
 
@@ -384,25 +412,21 @@ static int swd_init_debug(void) {
         return 0; // Ошибка
     }
     
-    // // Включаем питание отладки
-    // swd_write_dp(DP_CTRLSTAT, CSYSPWRUPREQ | CDBGPWRUPREQ);
+    // Включаем питание отладки
+   swd_write_dp(DP_CTRLSTAT, CSYSPWRUPREQ | CDBGPWRUPREQ);
+
+ uint32_t stat;
+// do {
+    stat = swd_read_dp(DP_CTRLSTAT);
+// } while((stat & (CSYSPWRUPACK | CDBGPWRUPACK)) !=
+//         (CSYSPWRUPACK | CDBGPWRUPACK));
     
-    // // Ждем подтверждения
-    // uint32_t timeout = 1000;
-    // while(timeout--) {
-    //     uint32_t stat = swd_read_dp(DP_CTRLSTAT);
-    //     if((stat & (CSYSPWRUPACK | CDBGPWRUPACK)) == (CSYSPWRUPACK | CDBGPWRUPACK)) {
-    //         break;
-    //     }
-    //     delay_us(10);
-    // }
-    
-    // // Выбираем AP #0
+    // Выбираем AP #0
     // swd_write_dp(DP_SELECT, 0);
     
     // // Настраиваем AP (32-bit access, auto-increment)
-    //  swd_write_ap(0, AP_CSW, 0x23000012);
-    
+    // swd_write_ap(0, AP_CSW, 0x23000012);
+ 
     return 1; // Успех
 }
 
@@ -413,12 +437,7 @@ static void swd_mem_write(uint32_t addr, uint32_t data) {
     swd_write_ap(0, AP_DRW, data);
 }
 
-static uint32_t swd_mem_read(uint32_t addr) {
-    // Записываем адрес
-    swd_write_ap(0, AP_TAR, addr);
-    // Читаем данные
-    return swd_read_ap(0, AP_DRW);
-}
+
 
 // ================= Flash операции =================
 static void flash_unlock(uint32_t flash_base) {
@@ -492,6 +511,8 @@ if(!swd_init_debug())
     }
 }
 
+
+
 // 3. Отпускаем reset
 NRST_PORT->BSRR = (1 << NRST_PIN); // NRST = 1
 delay_us(10);
@@ -502,14 +523,14 @@ delay_us(10);
   // uint32_t id = swd_read_idcode();
     
 //     //адрес начала Flash для STM32F1)
-//       uint32_t flash_base = 0x40022000;
-//      uint32_t target_flash_start = 0x08000000;
+    //   uint32_t flash_base = 0x40022000;
+    //  uint32_t target_flash_start = 0x08000000;
     
-//     //Разблокируем Flash целевой платы
-//     flash_unlock(flash_base);
+    //Разблокируем Flash целевой платы
+    // flash_unlock(flash_base);
     
-//     // Стираем Flash
-//     flash_erase_all(flash_base);
+    // // Стираем Flash
+    // flash_erase_all(flash_base);
     
 // //     // тестовых данных
 //    uint32_t test_data[] = {
@@ -585,4 +606,4 @@ delay_us(10);
 //             delay_ms(100);
 //         }
 //     }
-}
+}  
