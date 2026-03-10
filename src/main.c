@@ -22,6 +22,7 @@
 #define AP_CSW       0x00 // Control/Status Word (настройка доступа)
 #define AP_TAR       0x04 // Transfer Address (адрес в целевой системе)
 #define AP_DRW       0x0C // Data Read/Write (данные)
+#define AP_IDR 0xFC
 
 // Флаги DP_CTRLSTAT
 #define CSYSPWRUPACK (1 << 31) // Подтверждение включения системы  
@@ -216,54 +217,73 @@ static uint32_t swd_transfer(uint8_t req, uint32_t data)
     uint32_t val = 0;
     uint8_t ack;
 
-    // 1. Отправка запроса
+    // ----------------------------
+    // 1. Отправка запроса (8 бит)
+    // ----------------------------
     swd_io_dir_output();
     for(int i = 0; i < 8; i++)
         swd_write_bit((req >> i) & 1);
 
-   
-    // 2. Turnaround к target
-    swd_turnaround();
-    swd_io_dir_input();
+    // 1 idle бит после запроса
+    swd_write_bit(0);
 
-    // 3. Читаем ACK
+    // ----------------------------
+    // 2. Turnaround к target
+    // ----------------------------
+    swd_io_dir_input();
+    swd_turnaround(); // SWDIO в high-Z
+    delay_us(1);      // небольшой таймаут, чтобы target успел
+
+    // ----------------------------
+    // 3. Чтение ACK (3 бита)
+    // ----------------------------
     ack = 0;
     for(int i = 0; i < 3; i++)
         ack |= (swd_read_bit() << i);
 
-       
-    if(ack != 0b100)
-    {
-        swd_turnaround();
-        swd_io_dir_output();
-        return 0xFFFFFFFF;
-    }
+    // 1 idle бит после ACK
+    swd_read_bit();
+
+  
 
     if(req & (1 << 2)) // READ
     {
+        // ------------------------
+        // Чтение 32 бит данных
+        // ------------------------
+        val = 0;
         for(int i = 0; i < 32; i++)
-            val |= (swd_read_bit() << i);
+            val |= ((uint32_t)swd_read_bit() << i);
 
-        swd_read_bit(); // parity
+        // Parity
+        uint8_t parity = 0;
+        for(int i = 0; i < 32; i++)
+            parity ^= (val >> i) & 1;
+        uint8_t parity_bit = swd_read_bit();
+      
 
-        // ОБЯЗАТЕЛЬНЫЙ turnaround обратно
-        swd_turnaround();
+        // Turnaround обратно к мастеру
         swd_io_dir_output();
+        swd_turnaround();
+        swd_write_bit(0); // idle
     }
     else // WRITE
     {
-        // turnaround к output
-        swd_turnaround();
+        // Turnaround обратно к мастеру
         swd_io_dir_output();
+        swd_turnaround();
 
+        // ------------------------
+        // Запись 32 бит данных
+        // ------------------------
         for(int i = 0; i < 32; i++)
             swd_write_bit((data >> i) & 1);
 
+        // Parity данных
         uint8_t parity = __builtin_popcount(data) & 1;
         swd_write_bit(parity);
 
-        // 1 idle цикл
-        swd_write_bit(0);
+        swd_write_bit(0); // idle
     }
 
     return val;
@@ -367,7 +387,7 @@ static void swd_clear_errors(void)
 
 static void swd_write_ap(uint8_t ap, uint8_t addr, uint32_t data)
 {
-    swd_write_dp(DP_SELECT, (ap << 24) | ((addr & 0xF0) << 4));
+    swd_write_dp(DP_SELECT, (ap << 24) | (addr & 0xF0));
 
     uint8_t req = swd_make_request(1, 0, addr); // AP, Write
     swd_transfer(req, data);
@@ -414,18 +434,18 @@ static int swd_init_debug(void) {
     
     // Включаем питание отладки
    swd_write_dp(DP_CTRLSTAT, CSYSPWRUPREQ | CDBGPWRUPREQ);
-
- uint32_t stat;
-// do {
-    stat = swd_read_dp(DP_CTRLSTAT);
+   
+//     uint32_t stat;
+//  do {
+//     stat = swd_read_dp(DP_CTRLSTAT);
 // } while((stat & (CSYSPWRUPACK | CDBGPWRUPACK)) !=
 //         (CSYSPWRUPACK | CDBGPWRUPACK));
     
     // Выбираем AP #0
-    // swd_write_dp(DP_SELECT, 0);
-    
+    swd_write_dp(DP_SELECT, 0);
+    //uint32_t idr = swd_read_ap(0, AP_IDR);
     // // Настраиваем AP (32-bit access, auto-increment)
-    // swd_write_ap(0, AP_CSW, 0x23000012);
+    swd_write_ap(0, AP_CSW, 0x23000012);
  
     return 1; // Успех
 }
@@ -498,7 +518,7 @@ int main(void) {
      dwt_init();
 
   // 1. Держим target в reset
-NRST_PORT->BRR = (1 << NRST_PIN);  // NRST = 0
+//NRST_PORT->BRR = (1 << NRST_PIN);  // NRST = 0
 
 
 // 2. Инициализация SWD ПОКА target в reset
@@ -514,10 +534,10 @@ if(!swd_init_debug())
 
 
 // 3. Отпускаем reset
-NRST_PORT->BSRR = (1 << NRST_PIN); // NRST = 1
-delay_us(10);
+//NRST_PORT->BSRR = (1 << NRST_PIN); // NRST = 1
+//delay_us(10);
 
-    
+//uint32_t test = swd_mem_read(0xE000ED00); //ожидаемое 0x410FC231
 //     Читаем IDCODE
  //  FIXME: нужен ли здесь icode ? 
   // uint32_t id = swd_read_idcode();
