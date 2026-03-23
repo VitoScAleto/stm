@@ -182,22 +182,39 @@ static void swd_write_bit(uint8_t bit)
      delay_us(1);
 }
 
-static uint8_t swd_read_bit(void)
+// static uint8_t swd_read_bit(void) не правильно
+// {
+//     uint8_t bit;
+//     // SWCLK LOW
+//     SWCLK_LOW();
+//     delay_us(1);
+
+//     // SWCLK HIGH — на фронте данные стабильны, читаем здесь
+//     SWCLK_HIGH();
+//      delay_us(1);
+
+//     bit = (SWDIO_PORT->IDR >> SWDIO_PIN) & 1;
+
+//     return bit;
+// }
+
+static uint8_t swd_read_bit(void)//правильно
 {
     uint8_t bit;
-    // SWCLK LOW
+    
+    // SWCLK LOW - таргет выставляет данные на линии
     SWCLK_LOW();
     delay_us(1);
-
-    // SWCLK HIGH — на фронте данные стабильны, читаем здесь
-    SWCLK_HIGH();
-     delay_us(1);
-
+    
+    // Читаем бит, пока SWCLK LOW (данные стабильны)
     bit = (SWDIO_PORT->IDR >> SWDIO_PIN) & 1;
-
+    
+    // SWCLK HIGH - строббируем (формируем фронт для следующего бита)
+    SWCLK_HIGH();
+    delay_us(1);
+    
     return bit;
 }
-
 static void swd_turnaround(void)
 {
     SWCLK_LOW();
@@ -224,33 +241,33 @@ static uint32_t swd_transfer(uint8_t req, uint32_t data)
 
    
     // 2. Turnaround к target
-    swd_turnaround();
     swd_io_dir_input();
+    swd_turnaround();
+    
 
     // 3. Читаем ACK
     ack = 0;
     for(int i = 0; i < 3; i++)
         ack |= (swd_read_bit() << i);
 
-       
-    if(ack != 0b100)
-    {
-        swd_turnaround();
-        swd_io_dir_output();
-        return 0xFFFFFFFF;
+
+  if(req & (1<<2)) {
+    val = 0;
+    uint8_t parity_calc = 0;
+    for(int i=0;i<32;i++) {
+        uint8_t b = swd_read_bit();
+        val |= ((uint32_t)b << i);
+        parity_calc ^= b;
     }
 
-    if(req & (1 << 2)) // READ
-    {
-        for(int i = 0; i < 32; i++)
-            val |= (swd_read_bit() << i);
+    uint8_t parity_bit = swd_read_bit();
+    if(parity_calc != parity_bit)
+        TxStr2((uint8_t*)"PARITY ERROR\r\n");
 
-        swd_read_bit(); // parity
-
-        // ОБЯЗАТЕЛЬНЫЙ turnaround обратно
-        swd_turnaround();
-        swd_io_dir_output();
-    }
+    // 5. Turnaround обратно к мастеру
+    swd_io_dir_output();
+    swd_turnaround();
+}
     else // WRITE
     {
         // turnaround к output
@@ -424,10 +441,10 @@ static int swd_init_debug(void) {
 //         (CSYSPWRUPACK | CDBGPWRUPACK));
     
     // Выбираем AP #0
-   // swd_write_dp(DP_SELECT, 0x00000000);
+   swd_write_dp(DP_SELECT, 0x00000000);
     
     // // Настраиваем AP (32-bit access, auto-increment)
-   // swd_write_ap(0, AP_CSW, 0x22000012);
+   swd_write_ap(0, AP_CSW, 0x22000012);
     
  
     return 1; // Успех
@@ -498,9 +515,9 @@ int main(void) {
     dwt_init();
 
     // ------------------ USART2 ------------------
-    USART2_Init();
+     USART2_Init();
 
-    TxStr2((uint8_t*)"USART OK\r\n");
+     TxStr2((uint8_t*)"USART OK\r\n");
 
     // ------------------ SWD init ------------------
     if (!swd_init_debug()) {
@@ -512,10 +529,21 @@ int main(void) {
         }
     }
 
-    TxStr2((uint8_t*)"SWD OK\r\n");
 
-   uint32_t id = swd_read_idcode();
-   TxLabelHex32("IDCODE: ", id);
+    uint32_t start_addr = 0x08000000;
+uint32_t num_words = 100;  // количество 32-битных слов для чтения
+
+TxStr2((uint8_t*)"\r\nMemory Dump:\r\n");
+for(uint32_t i = 0; i < num_words; i++) 
+{
+    uint32_t addr = start_addr + (i * 4);
+    uint32_t data = swd_mem_read(addr);
+    
+    // Вывод в формате: адрес : значение
+    TxStr2((uint8_t*)"0x");
+    TxHex32(addr);
+    TxStr2((uint8_t*)": 0x");
+    TxHex32(data);
     TxStr2((uint8_t*)"\r\n");
-   
+}
 }
