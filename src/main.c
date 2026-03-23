@@ -1,4 +1,4 @@
-#include "../inc/stm32f1xx.h"
+#include "../inc/swd.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -475,8 +475,10 @@ static void flash_program_word(uint32_t addr, uint32_t data, uint32_t flash_base
     swd_mem_write(flash_base + FLASH_CR, 0x00000000); // Сброс
 }
 
+
+
 int main(void) {
-    // ------------------ Настройка тактирования 72 МГц ------------------
+    // ------------------ Тактирование 72 МГц ------------------
     RCC->CR |= RCC_CR_HSEON;
     while (!(RCC->CR & RCC_CR_HSERDY));
 
@@ -491,18 +493,29 @@ int main(void) {
 
     SystemCoreClock = 72000000;
 
-    // ------------------ Инициализация SWD и DWT ------------------
+    // ------------------ GPIO + SWD ------------------
     swd_gpio_init();
     dwt_init();
 
-    // ------------------ Инициализация отладки ------------------
+    // ------------------ USART2 ------------------
+    USART2_Init();
+
+    TxStr2((uint8_t*)"USART OK\r\n");
+
+    // ------------------ SWD init ------------------
     if (!swd_init_debug()) {
+        TxStr2((uint8_t*)"SWD FAIL\r\n");
+
         while (1) {
             led_toggle();
             delay_us(300000);
         }
     }
 
-    
-    
+    TxStr2((uint8_t*)"SWD OK\r\n");
+
+   uint32_t id = swd_read_idcode();
+   TxLabelHex32("IDCODE: ", id);
+    TxStr2((uint8_t*)"\r\n");
+   
 }

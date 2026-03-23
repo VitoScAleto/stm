@@ -20,7 +20,7 @@ LD_DIR = ld
 BUILD_DIR = build
 
 # Source files
-SRCS = $(SRC_DIR)/main.c $(SRC_DIR)/system_stm32f1xx.c $(SRC_DIR)/startup_stm32f103x6.s
+SRCS = $(SRC_DIR)/main.c $(SRC_DIR)/system_stm32f1xx.c $(SRC_DIR)/startup_stm32f103x6.s $(SRC_DIR)/usart.c $(SRC_DIR)/init.c
 
 # Compiler flags
 CFLAGS = -mcpu=$(MCU) -mthumb
