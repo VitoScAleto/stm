@@ -693,7 +693,10 @@ static int flash_program_block(uint32_t base_addr,
                                const uint32_t *data,
                                uint32_t word_count)
 {
+    // flash_erase_page(base_addr);
+
     for (uint32_t i = 0; i < word_count; i++) {
+        if(i * 4u  % 0x400 == 0) flash_erase_page(base_addr +i * 4u );
         if (!flash_program_word32(base_addr + i * 4u, data[i])) {
             return 0;
         }
@@ -754,37 +757,32 @@ int main(void) {
     // TxStr2((uint8_t*)"\r\n");
     // delay_us(1000);
 
-// flash_unlock();
-// flash_erase_all(FLASH_BASE);
+    // flash_unlock();
+    // flash_erase_all(FLASH_BASE);
 
-flash_unlock_target();
+    flash_unlock_target();
 
-// страница 0
-flash_erase_page(0x08000000);
 
-// страница 1 (если данные доходят туда)
-flash_erase_page(0x08000400);
-
-flash_program_block(0x08000000,
-                    flash_image,
-                    sizeof(flash_image)/4);
-
-flash_lock_target();
-
-    uint32_t start_addr = 0x4001100C;
-uint32_t num_words = 100;  // количество 32-битных слов для чтения
-
-TxStr2((uint8_t*)"\r\nMemory Dump:\r\n");
-for(uint32_t i = 0; i < num_words; i++) 
-{
-    uint32_t addr = start_addr + (i * 4);
-    uint32_t data = swd_mem_read(addr);
+    flash_program_block(0x08000000,
+                        flash_image,
+                        sizeof(flash_image)/4);
     
-    // Вывод в формате: адрес : значение
-    TxStr2((uint8_t*)"0x");
-    TxHex32(addr);
-    TxStr2((uint8_t*)": 0x");
-    TxHex32(data);
-    TxStr2((uint8_t*)"\r\n");
-}
+    
+    flash_lock_target();
+    // uint32_t start_addr = 0x4001100C;
+    // uint32_t num_words = 100;  // количество 32-битных слов для чтения
+
+    // TxStr2((uint8_t*)"\r\nMemory Dump:\r\n");
+    // for(uint32_t i = 0; i < num_words; i++) 
+    // {
+    //     uint32_t addr = start_addr + (i * 4);
+    //     uint32_t data = swd_mem_read(addr);
+        
+    //     // Вывод в формате: адрес : значение
+    //     TxStr2((uint8_t*)"0x");
+    //     TxHex32(addr);
+    //     TxStr2((uint8_t*)": 0x");
+    //     TxHex32(data);
+    //     TxStr2((uint8_t*)"\r\n");
+    // }
 }
