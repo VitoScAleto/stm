@@ -1,0 +1,10 @@
+C:\Users\Chuma\source\repos\SWD\SWD\obj\Debug\SWD.csproj.AssemblyReference.cache
+C:\Users\Chuma\source\repos\SWD\SWD\obj\Debug\SWD.Form1.resources
+C:\Users\Chuma\source\repos\SWD\SWD\obj\Debug\SWD.Properties.Resources.resources
+C:\Users\Chuma\source\repos\SWD\SWD\obj\Debug\SWD.csproj.GenerateResource.cache
+C:\Users\Chuma\source\repos\SWD\SWD\obj\Debug\SWD.csproj.CoreCompileInputs.cache
+C:\Users\Chuma\source\repos\SWD\SWD\bin\Debug\SWD.exe.config
+C:\Users\Chuma\source\repos\SWD\SWD\bin\Debug\SWD.exe
+C:\Users\Chuma\source\repos\SWD\SWD\bin\Debug\SWD.pdb
+C:\Users\Chuma\source\repos\SWD\SWD\obj\Debug\SWD.exe
+C:\Users\Chuma\source\repos\SWD\SWD\obj\Debug\SWD.pdb
