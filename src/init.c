@@ -24,5 +24,7 @@ void USART2_Init(void)
     USART2->CR1 =
         USART_CR1_TE |   // передача
         USART_CR1_RE |   // приём
-        USART_CR1_UE;    // включить USART
+        USART_CR1_UE |   // включить USART
+        USART_CR1_RXNEIE; 
+    NVIC_EnableIRQ(USART2_IRQn);
 }
