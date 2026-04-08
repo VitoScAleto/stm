@@ -39,6 +39,12 @@
             this.lblStatus = new System.Windows.Forms.Label();
             this.tbLog = new System.Windows.Forms.TextBox();
             this.openFileDialog1 = new System.Windows.Forms.OpenFileDialog();
+            this.btnClearLog = new System.Windows.Forms.Button();
+            this.btnSaveToEeprom = new System.Windows.Forms.Button();
+            this.btnCountFirmware = new System.Windows.Forms.Button();
+            this.btnFlashFromEeprom = new System.Windows.Forms.Button();
+            this.cbFirmwareList = new System.Windows.Forms.ComboBox();
+            this.buttonDeleteFromEeprom = new System.Windows.Forms.Button();
             this.SuspendLayout();
             // 
             // lblPort
@@ -106,7 +112,7 @@
             // 
             // progressBar
             // 
-            this.progressBar.Location = new System.Drawing.Point(273, 336);
+            this.progressBar.Location = new System.Drawing.Point(273, 311);
             this.progressBar.Name = "progressBar";
             this.progressBar.Size = new System.Drawing.Size(192, 21);
             this.progressBar.TabIndex = 7;
@@ -114,7 +120,7 @@
             // lblStatus
             // 
             this.lblStatus.AutoSize = true;
-            this.lblStatus.Location = new System.Drawing.Point(290, 388);
+            this.lblStatus.Location = new System.Drawing.Point(278, 346);
             this.lblStatus.Name = "lblStatus";
             this.lblStatus.Size = new System.Drawing.Size(34, 13);
             this.lblStatus.TabIndex = 8;
@@ -134,11 +140,76 @@
             // 
             this.openFileDialog1.FileName = "openFileDialog1";
             // 
+            // btnClearLog
+            // 
+            this.btnClearLog.Location = new System.Drawing.Point(477, 46);
+            this.btnClearLog.Name = "btnClearLog";
+            this.btnClearLog.Size = new System.Drawing.Size(192, 22);
+            this.btnClearLog.TabIndex = 10;
+            this.btnClearLog.Text = "Clear";
+            this.btnClearLog.UseVisualStyleBackColor = true;
+            this.btnClearLog.Click += new System.EventHandler(this.btnClearLog_Click);
+            // 
+            // btnSaveToEeprom
+            // 
+            this.btnSaveToEeprom.Location = new System.Drawing.Point(477, 131);
+            this.btnSaveToEeprom.Name = "btnSaveToEeprom";
+            this.btnSaveToEeprom.Size = new System.Drawing.Size(192, 22);
+            this.btnSaveToEeprom.TabIndex = 11;
+            this.btnSaveToEeprom.Text = "Save .bin in EEPROM";
+            this.btnSaveToEeprom.UseVisualStyleBackColor = true;
+            this.btnSaveToEeprom.Click += new System.EventHandler(this.btnSaveToEeprom_Click);
+            // 
+            // btnCountFirmware
+            // 
+            this.btnCountFirmware.Location = new System.Drawing.Point(477, 159);
+            this.btnCountFirmware.Name = "btnCountFirmware";
+            this.btnCountFirmware.Size = new System.Drawing.Size(192, 22);
+            this.btnCountFirmware.TabIndex = 12;
+            this.btnCountFirmware.Text = "Count proshivok in EEPROM";
+            this.btnCountFirmware.UseVisualStyleBackColor = true;
+            this.btnCountFirmware.Click += new System.EventHandler(this.btnCountFirmware_Click);
+            // 
+            // btnFlashFromEeprom
+            // 
+            this.btnFlashFromEeprom.Location = new System.Drawing.Point(477, 250);
+            this.btnFlashFromEeprom.Name = "btnFlashFromEeprom";
+            this.btnFlashFromEeprom.Size = new System.Drawing.Size(192, 22);
+            this.btnFlashFromEeprom.TabIndex = 13;
+            this.btnFlashFromEeprom.Text = "Flash from EEPROM";
+            this.btnFlashFromEeprom.UseVisualStyleBackColor = true;
+            this.btnFlashFromEeprom.Click += new System.EventHandler(this.btnFlashFromEeprom_Click);
+            // 
+            // cbFirmwareList
+            // 
+            this.cbFirmwareList.FormattingEnabled = true;
+            this.cbFirmwareList.Location = new System.Drawing.Point(477, 200);
+            this.cbFirmwareList.Name = "cbFirmwareList";
+            this.cbFirmwareList.Size = new System.Drawing.Size(192, 21);
+            this.cbFirmwareList.TabIndex = 14;
+            // 
+            // buttonDeleteFromEeprom
+            // 
+            this.buttonDeleteFromEeprom.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.buttonDeleteFromEeprom.Location = new System.Drawing.Point(477, 283);
+            this.buttonDeleteFromEeprom.Name = "buttonDeleteFromEeprom";
+            this.buttonDeleteFromEeprom.Size = new System.Drawing.Size(192, 22);
+            this.buttonDeleteFromEeprom.TabIndex = 15;
+            this.buttonDeleteFromEeprom.Text = "Delete from EEPROM";
+            this.buttonDeleteFromEeprom.UseVisualStyleBackColor = true;
+            this.buttonDeleteFromEeprom.Click += new System.EventHandler(this.buttonDeleteFromEeprom_Click);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(484, 429);
+            this.ClientSize = new System.Drawing.Size(681, 429);
+            this.Controls.Add(this.buttonDeleteFromEeprom);
+            this.Controls.Add(this.cbFirmwareList);
+            this.Controls.Add(this.btnFlashFromEeprom);
+            this.Controls.Add(this.btnCountFirmware);
+            this.Controls.Add(this.btnSaveToEeprom);
+            this.Controls.Add(this.btnClearLog);
             this.Controls.Add(this.tbLog);
             this.Controls.Add(this.lblStatus);
             this.Controls.Add(this.progressBar);
@@ -169,6 +240,12 @@
         private System.Windows.Forms.Label lblStatus;
         private System.Windows.Forms.TextBox tbLog;
         private System.Windows.Forms.OpenFileDialog openFileDialog1;
+        private System.Windows.Forms.Button btnClearLog;
+        private System.Windows.Forms.Button btnSaveToEeprom;
+        private System.Windows.Forms.Button btnCountFirmware;
+        private System.Windows.Forms.Button btnFlashFromEeprom;
+        private System.Windows.Forms.ComboBox cbFirmwareList;
+        private System.Windows.Forms.Button buttonDeleteFromEeprom;
     }
 }
 

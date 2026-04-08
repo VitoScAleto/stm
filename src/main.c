@@ -1,5 +1,6 @@
 #include "../inc/swd.h"
 #include <stdint.h>
+#include "i2c_at24c256.c"
 
 // ================= КОНФИГУРАЦИЯ =================
 #define SWCLK_PORT   GPIOA
@@ -57,6 +58,21 @@
 #define SWCLK_LOW()   GPIOA->BSRR = (1u << (SWCLK_PIN + 16))
 #define NRST_HIGH()   GPIOB->BSRR = (1u << NRST_PIN)
 #define NRST_LOW()    GPIOB->BSRR = (1u << (NRST_PIN + 16))
+
+#define CMD_CHECK_TARGET     'C'
+#define CMD_START_PROGRAM    'S'
+#define CMD_END_PROGRAM      'E'
+
+#define CMD_EEPROM_SAVE      'W'
+#define CMD_EEPROM_COUNT     'N'
+#define CMD_EEPROM_LIST      'L'
+#define CMD_EEPROM_READ      'R'
+
+#define RESP_OK              'K'
+#define RESP_ERR             'E'
+#define CMD_EEPROM_DELETE    'D'
+
+#define UART_RX_BUF_SIZE     64
 
 static void dwt_init(void)
 {
@@ -547,27 +563,361 @@ volatile uint32_t word = 0;
 typedef enum {
     STATE_WAIT_CMD,
     STATE_WAIT_SIZE,
-    STATE_PROGRAM
+    STATE_PROGRAM,
+
+    STATE_EEPROM_WAIT_SIZE,
+    STATE_EEPROM_RECV_DATA,
+    STATE_EEPROM_WAIT_INDEX,
+    STATE_EEPROM_WAIT_DELETE_INDEX
 } State_Swd;
 
 uint64_t address_flash = 0;
 uint32_t size_programm = 0;
 uint32_t received_words = 0;
 
+volatile uint8_t byte_ready = 0;
+volatile uint8_t rx_buf[UART_RX_BUF_SIZE];
+volatile uint32_t rx_count = 0;
 uint8_t state_swd = STATE_WAIT_CMD;
+
+/* EEPROM */
+uint32_t eeprom_fw_size = 0;
+uint32_t eeprom_received = 0;
+uint32_t eeprom_write_addr = 0;
+uint32_t eeprom_read_index = 0;
+uint8_t  eeprom_page_buf[UART_RX_BUF_SIZE];
+static void uart_send_u32(uint32_t v)
+{
+    Tx2((uint8_t)(v & 0xFF));
+    Tx2((uint8_t)((v >> 8) & 0xFF));
+    Tx2((uint8_t)((v >> 16) & 0xFF));
+    Tx2((uint8_t)((v >> 24) & 0xFF));
+}
+
+static uint32_t bytes_to_u32(const uint8_t *buf)
+{
+    return ((uint32_t)buf[0]) |
+           ((uint32_t)buf[1] << 8) |
+           ((uint32_t)buf[2] << 16) |
+           ((uint32_t)buf[3] << 24);
+}
+
+static int eeprom_read_u32(uint16_t addr, uint32_t *value)
+{
+    uint8_t tmp[4];
+
+    if (!AT24C256_ReadBuffer(addr, tmp, 4))
+        return 0;
+
+    *value = bytes_to_u32(tmp);
+    return 1;
+}
+
+static int eeprom_write_u32(uint16_t addr, uint32_t value)
+{
+    uint8_t tmp[4];
+
+    tmp[0] = (uint8_t)(value & 0xFF);
+    tmp[1] = (uint8_t)((value >> 8) & 0xFF);
+    tmp[2] = (uint8_t)((value >> 16) & 0xFF);
+    tmp[3] = (uint8_t)((value >> 24) & 0xFF);
+
+    return AT24C256_WriteBuffer(addr, tmp, 4);
+}
+
+static int eeprom_is_empty_marker(uint32_t value)
+{
+    return (value == 0xFFFFFFFFu);
+}
+
+static int eeprom_find_end(uint16_t *end_addr, uint32_t *count)
+{
+    uint16_t addr = 0;
+    uint32_t cnt = 0;
+
+    while (addr + 4 <= AT24C256_TOTAL_SIZE)
+    {
+        uint32_t len;
+
+        if (!eeprom_read_u32(addr, &len))
+            return 0;
+
+        if (eeprom_is_empty_marker(len))
+            break;
+
+        if (len == 0 || (uint32_t)addr + 4u + len > AT24C256_TOTAL_SIZE)
+            return 0;
+
+        addr = (uint16_t)(addr + 4u + len);
+        cnt++;
+    }
+
+    *end_addr = addr;
+    *count = cnt;
+    return 1;
+}
+
+static int eeprom_find_by_index(uint32_t index, uint16_t *data_addr, uint32_t *len_out)
+{
+    uint16_t addr = 0;
+    uint32_t current = 0;
+
+    while (addr + 4 <= AT24C256_TOTAL_SIZE)
+    {
+        uint32_t len;
+
+        if (!eeprom_read_u32(addr, &len))
+            return 0;
+
+        if (eeprom_is_empty_marker(len))
+            return 0;
+
+        if (len == 0 || (uint32_t)addr + 4u + len > AT24C256_TOTAL_SIZE)
+            return 0;
+
+        if (current == index)
+        {
+            *data_addr = (uint16_t)(addr + 4u);
+            *len_out = len;
+            return 1;
+        }
+
+        addr = (uint16_t)(addr + 4u + len);
+        current++;
+    }
+
+    return 0;
+}
+
+static void eeprom_send_count(void)
+{
+    uint16_t end_addr = 0;
+    uint32_t count = 0;
+
+    if (!eeprom_find_end(&end_addr, &count))
+    {
+        uart_send_u32(0);
+        return;
+    }
+
+    uart_send_u32(count);
+}
+
+static void eeprom_send_list(void)
+{
+    uint16_t addr = 0;
+    uint32_t count = 0;
+    uint16_t end_addr = 0;
+
+    if (!eeprom_find_end(&end_addr, &count))
+    {
+        uart_send_u32(0);
+        return;
+    }
+
+    uart_send_u32(count);
+
+    while (addr < end_addr)
+    {
+        uint32_t len;
+        if (!eeprom_read_u32(addr, &len))
+            return;
+
+        uart_send_u32(len);
+        addr = (uint16_t)(addr + 4u + len);
+    }
+}
+
+static int eeprom_begin_save(uint32_t len)
+{
+    uint16_t end_addr = 0;
+    uint32_t count = 0;
+
+    if (len == 0)
+        return 0;
+
+    if (!eeprom_find_end(&end_addr, &count))
+        return 0;
+
+    if ((uint32_t)end_addr + 4u + len > AT24C256_TOTAL_SIZE)
+        return 0;
+
+    if (!eeprom_write_u32(end_addr, len))
+        return 0;
+
+    eeprom_write_addr = end_addr + 4u;
+    eeprom_fw_size = len;
+    eeprom_received = 0;
+
+    return 1;
+}
+
+static int eeprom_write_chunk(const uint8_t *data, uint32_t len)
+{
+    if (eeprom_received + len > eeprom_fw_size)
+        return 0;
+
+    if (!AT24C256_WriteBuffer((uint16_t)eeprom_write_addr, data, (uint16_t)len))
+        return 0;
+
+    eeprom_write_addr += len;
+    eeprom_received += len;
+    return 1;
+}
+
+static int eeprom_send_firmware(uint32_t index)
+{
+    uint16_t data_addr;
+    uint32_t len;
+    uint8_t buf[64];
+
+    if (!eeprom_find_by_index(index, &data_addr, &len))
+        return 0;
+
+    uart_send_u32(len);
+
+    uint32_t sent = 0;
+    while (sent < len)
+    {
+        uint16_t chunk = (len - sent > sizeof(buf)) ? sizeof(buf) : (uint16_t)(len - sent);
+
+        if (!AT24C256_ReadBuffer((uint16_t)(data_addr + sent), buf, chunk))
+            return 0;
+
+        for (uint16_t i = 0; i < chunk; i++)
+            Tx2(buf[i]);
+
+        sent += chunk;
+    }
+
+    return 1;
+}
+static int eeprom_find_record_by_index(uint32_t index, uint16_t *record_addr, uint32_t *record_len)
+{
+    uint16_t addr = 0;
+    uint32_t current = 0;
+
+    while (addr + 4 <= AT24C256_TOTAL_SIZE)
+    {
+        uint32_t len;
+
+        if (!eeprom_read_u32(addr, &len))
+            return 0;
+
+        if (eeprom_is_empty_marker(len))
+            return 0;
+
+        if (len == 0 || (uint32_t)addr + 4u + len > AT24C256_TOTAL_SIZE)
+            return 0;
+
+        if (current == index)
+        {
+            *record_addr = addr;
+            *record_len = len;
+            return 1;
+        }
+
+        addr = (uint16_t)(addr + 4u + len);
+        current++;
+    }
+
+    return 0;
+}
+static int eeprom_delete_firmware(uint32_t index)
+{
+    uint16_t record_addr = 0;
+    uint32_t record_len = 0;
+
+    uint16_t end_addr = 0;
+    uint32_t count = 0;
+
+    uint16_t delete_total_size;
+    uint16_t src_addr;
+    uint16_t dst_addr;
+
+    uint8_t buf[64];
+    uint8_t ff[64];
+
+    for (uint16_t i = 0; i < sizeof(ff); i++)
+        ff[i] = 0xFF;
+
+    /* найти запись по индексу */
+    if (!eeprom_find_record_by_index(index, &record_addr, &record_len))
+        return 0;
+
+    /* найти конец всех записей */
+    if (!eeprom_find_end(&end_addr, &count))
+        return 0;
+
+    delete_total_size = (uint16_t)(4u + record_len);
+
+    /*
+        src_addr = начало следующей записи после удаляемой
+        dst_addr = куда сдвигать
+    */
+    src_addr = (uint16_t)(record_addr + delete_total_size);
+    dst_addr = record_addr;
+
+    /*
+        Сдвигаем всё, что справа от удаляемой записи, влево.
+        Работаем блоками по 64 байта.
+    */
+    while (src_addr < end_addr)
+    {
+        uint16_t remain = (uint16_t)(end_addr - src_addr);
+        uint16_t chunk = (remain > sizeof(buf)) ? sizeof(buf) : remain;
+
+        if (!AT24C256_ReadBuffer(src_addr, buf, chunk))
+            return 0;
+
+        if (!AT24C256_WriteBuffer(dst_addr, buf, chunk))
+            return 0;
+
+        src_addr = (uint16_t)(src_addr + chunk);
+        dst_addr = (uint16_t)(dst_addr + chunk);
+    }
+
+    uint16_t tail_start = (uint16_t)(end_addr - delete_total_size);
+    uint16_t tail_remain = delete_total_size;
+
+    while (tail_remain > 0)
+    {
+        uint16_t chunk = (tail_remain > sizeof(ff)) ? sizeof(ff) : tail_remain;
+
+        if (!AT24C256_WriteBuffer(tail_start, ff, chunk))
+            return 0;
+
+        tail_start = (uint16_t)(tail_start + chunk);
+        tail_remain = (uint16_t)(tail_remain - chunk);
+    }
+
+    return 1;
+}
 void USART2_IRQHandler(void)
 {
     if (USART2->SR & USART_SR_RXNE)
     {
-        byte = USART2->DR; 
-        if (state_swd == STATE_PROGRAM || state_swd == STATE_WAIT_SIZE)
+        uint8_t b = (uint8_t)USART2->DR;
+
+        if (state_swd == STATE_PROGRAM || state_swd == STATE_WAIT_SIZE || state_swd == STATE_EEPROM_WAIT_SIZE || state_swd == STATE_EEPROM_WAIT_INDEX || state_swd == STATE_EEPROM_WAIT_DELETE_INDEX)
         {
-            word |= (uint32_t)byte << (count_byte * 8);
+            word |= ((uint32_t)b << (count_byte * 8));
             count_byte++;
+        }
+        else if (state_swd == STATE_EEPROM_RECV_DATA)
+        {
+            if (rx_count < UART_RX_BUF_SIZE)
+            {
+                rx_buf[rx_count++] = b;
+            }
+        }
+        else
+        {
+            byte = b;
+            byte_ready = 1;
         }
     }
 }
-
 int main(void)
 {
     RCC->CR |= RCC_CR_HSEON;
@@ -591,55 +941,66 @@ int main(void)
     dwt_init();
 
     USART2_Init();
-    // TxStr2((uint8_t *)"USART OK\r\n");
-
-    // if (!swd_init_debug()) {
-    //     TxStr2((uint8_t *)"SWD FAIL\r\n");
-
-    //     while (1) {
-    //         led_toggle();
-    //         delay_us(300000);
-    //     }
-    // }
+    I2C1_Init_AT24C256();
     
-    while (1){
-        // if(count_byte == 4){
-        //     flash_unlock_target();
-        //     if ((address_flash * 4u) % 0x400u == 0u) {
-        //         flash_erase_page(FLASH_BASE + address_flash * 4u);
-        //     }
-
-        //     if (!flash_program_word32(FLASH_BASE + address_flash * 4u, word)) {
-        //         TxStr2("TROUBLE");
-        //     }
-        //     flash_lock_target();
-
-        //     for (int i = 0; i < 4; i++)
-        //     {
-        //         Tx2((word >> (i * 8)) & 0xFF);
-        //     }
-        //     address_flash++;
-        //     word = 0;
-        //     count_byte = 0;
-        // }
-
+    
+    while (1)
+    {
         switch (state_swd)
         {
             case STATE_WAIT_CMD:
             {
-                    if (byte == 'C')
+                if (byte_ready)
+                {
+                    uint8_t cmd = byte;
+                    byte_ready = 0;
+                    byte = 0;
+
+                    if (cmd == CMD_CHECK_TARGET)
                     {
                         if (swd_init_debug())
-                            Tx2('K');
+                            Tx2(RESP_OK);
                         else
-                            Tx2('E');
+                            Tx2(RESP_ERR);
                     }
-                    else if (byte == 'S')
+                    else if (cmd == CMD_START_PROGRAM)
                     {
                         count_byte = 0;
                         word = 0;
                         state_swd = STATE_WAIT_SIZE;
                     }
+                    else if (cmd == CMD_END_PROGRAM)
+                    {
+                        swd_mem_write(0xE000ED0C, 0x05FA0004);
+                        Tx2(RESP_OK);
+                    }
+                    else if (cmd == CMD_EEPROM_SAVE)
+                    {
+                        count_byte = 0;
+                        word = 0;
+                        state_swd = STATE_EEPROM_WAIT_SIZE;
+                    }
+                    else if (cmd == CMD_EEPROM_COUNT)
+                    {
+                        eeprom_send_count();
+                    }
+                    else if (cmd == CMD_EEPROM_LIST)
+                    {
+                        eeprom_send_list();
+                    }
+                    else if (cmd == CMD_EEPROM_READ)
+                    {
+                        count_byte = 0;
+                        word = 0;
+                        state_swd = STATE_EEPROM_WAIT_INDEX;
+                    }
+                    else if (cmd == CMD_EEPROM_DELETE)
+                    {
+                        count_byte = 0;
+                        word = 0;
+                        state_swd = STATE_EEPROM_WAIT_DELETE_INDEX;
+                    }
+                }
             } break;
 
             case STATE_WAIT_SIZE:
@@ -648,14 +1009,13 @@ int main(void)
                 {
                     size_programm = word;
                     received_words = 0;
-
                     address_flash = 0;
+
                     word = 0;
                     count_byte = 0;
 
                     flash_unlock_target();
-
-                    Tx2('K'); // подтверждение старта
+                    Tx2(RESP_OK);
 
                     state_swd = STATE_PROGRAM;
                 }
@@ -667,17 +1027,23 @@ int main(void)
                 {
                     if ((address_flash * 4u) % 0x400u == 0u)
                     {
-                        flash_erase_page(FLASH_BASE + address_flash * 4u);
+                        if (!flash_erase_page(FLASH_BASE + address_flash * 4u))
+                        {
+                            flash_lock_target();
+                            Tx2(RESP_ERR);
+                            state_swd = STATE_WAIT_CMD;
+                            break;
+                        }
                     }
 
                     if (!flash_program_word32(FLASH_BASE + address_flash * 4u, word))
                     {
-                        Tx2('E');
+                        flash_lock_target();
+                        Tx2(RESP_ERR);
                         state_swd = STATE_WAIT_CMD;
                         break;
                     }
 
-                    // echo обратно (твоя логика)
                     for (int i = 0; i < 4; i++)
                     {
                         Tx2((word >> (i * 8)) & 0xFF);
@@ -689,19 +1055,104 @@ int main(void)
                     word = 0;
                     count_byte = 0;
 
-                    // конец прошивки
                     if (received_words >= size_programm)
                     {
                         flash_lock_target();
-                        swd_mem_write(0xE000ED0C, 0x05FA0004);
-                        Tx2('D'); // DONE
                         state_swd = STATE_WAIT_CMD;
                     }
                 }
             } break;
+
+            case STATE_EEPROM_WAIT_SIZE:
+            {
+                if (count_byte == 4)
+                {
+                    uint32_t len = word;
+
+                    word = 0;
+                    count_byte = 0;
+                    rx_count = 0;
+
+                    if (eeprom_begin_save(len))
+                    {
+                        Tx2(RESP_OK);
+                        state_swd = STATE_EEPROM_RECV_DATA;
+                    }
+                    else
+                    {
+                        Tx2(RESP_ERR);
+                        state_swd = STATE_WAIT_CMD;
+                    }
+                }
+            } break;
+
+            case STATE_EEPROM_RECV_DATA:
+            {
+                if (rx_count > 0)
+                {
+                    uint32_t remain = eeprom_fw_size - eeprom_received;
+                    uint32_t chunk = rx_count;
+
+                    if (chunk > remain)
+                        chunk = remain;
+
+                    for (uint32_t i = 0; i < chunk; i++)
+                        eeprom_page_buf[i] = rx_buf[i];
+
+                    rx_count = 0;
+
+                    if (!eeprom_write_chunk(eeprom_page_buf, chunk))
+                    {
+                        Tx2(RESP_ERR);
+                        state_swd = STATE_WAIT_CMD;
+                        break;
+                    }
+
+                    Tx2(RESP_OK);
+
+                    if (eeprom_received >= eeprom_fw_size)
+                    {
+                        Tx2(RESP_OK);
+                        state_swd = STATE_WAIT_CMD;
+                    }
+                }
+            } break;
+
+            case STATE_EEPROM_WAIT_INDEX:
+            {
+                if (count_byte == 4)
+                {
+                    uint32_t index = word;
+
+                    word = 0;
+                    count_byte = 0;
+
+                    if (!eeprom_send_firmware(index))
+                    {
+                        uart_send_u32(0);
+                    }
+
+                    state_swd = STATE_WAIT_CMD;
+                }
+            } break;
+            case STATE_EEPROM_WAIT_DELETE_INDEX:
+            {
+                if (count_byte == 4)
+                {
+                    uint32_t index = word;
+
+                    word = 0;
+                    count_byte = 0;
+
+                    if (eeprom_delete_firmware(index))
+                        Tx2(RESP_OK);
+                    else
+                        Tx2(RESP_ERR);
+
+                    state_swd = STATE_WAIT_CMD;
+                }
+            } break;
         }
-        
+    }
     }
 
-
-}

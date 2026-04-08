@@ -36,7 +36,7 @@
               "RelativeDocumentMoniker": "SWD\\Form1.cs",
               "ToolTip": "C:\\Users\\Chuma\\Desktop\\stm\\SWD\\SWD\\Form1.cs",
               "RelativeToolTip": "SWD\\Form1.cs",
-              "ViewState": "AgIAABwCAAAAAAAAAAAAACkCAAAAAAAAAAAAAA==",
+              "ViewState": "AgIAAI4CAAAAAAAAAAAowLUCAAAJAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-03-30T12:06:48.291Z",
               "EditorCaption": ""
@@ -49,9 +49,10 @@
               "RelativeDocumentMoniker": "SWD\\Form1.Designer.cs",
               "ToolTip": "C:\\Users\\Chuma\\Desktop\\stm\\SWD\\SWD\\Form1.Designer.cs",
               "RelativeToolTip": "SWD\\Form1.Designer.cs",
-              "ViewState": "AgIAAAQAAAAAAAAAAADwvw0AAAAjAAAAAAAAAA==",
+              "ViewState": "AgIAAAoAAAAAAAAAAAAlwOwAAAAsAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-03-30T12:06:19.137Z"
+              "WhenOpened": "2026-03-30T12:06:19.137Z",
+              "EditorCaption": ""
             },
             {
               "$type": "Document",
@@ -59,10 +60,11 @@
               "Title": "Form1.cs [\u041A\u043E\u043D\u0441\u0442\u0440\u0443\u043A\u0442\u043E\u0440]",
               "DocumentMoniker": "C:\\Users\\Chuma\\Desktop\\stm\\SWD\\SWD\\Form1.cs",
               "RelativeDocumentMoniker": "SWD\\Form1.cs",
-              "ToolTip": "C:\\Users\\Chuma\\source\\repos\\SWD\\SWD\\Form1.cs [\u041A\u043E\u043D\u0441\u0442\u0440\u0443\u043A\u0442\u043E\u0440]",
-              "RelativeToolTip": "..\\..\\..\\source\\repos\\SWD\\SWD\\Form1.cs [\u041A\u043E\u043D\u0441\u0442\u0440\u0443\u043A\u0442\u043E\u0440]",
+              "ToolTip": "C:\\Users\\Chuma\\Desktop\\stm\\SWD\\SWD\\Form1.cs [\u041A\u043E\u043D\u0441\u0442\u0440\u0443\u043A\u0442\u043E\u0440]",
+              "RelativeToolTip": "SWD\\Form1.cs [\u041A\u043E\u043D\u0441\u0442\u0440\u0443\u043A\u0442\u043E\u0440]",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-03-30T12:06:38.752Z"
+              "WhenOpened": "2026-03-30T12:06:38.752Z",
+              "EditorCaption": " [\u041A\u043E\u043D\u0441\u0442\u0440\u0443\u043A\u0442\u043E\u0440]"
             },
             {
               "$type": "Document",
@@ -73,7 +75,8 @@
               "ToolTip": "C:\\Users\\Chuma\\Desktop\\stm\\SWD\\SWD\\Form1.resx",
               "RelativeToolTip": "SWD\\Form1.resx",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001005|",
-              "WhenOpened": "2026-03-30T12:06:19.697Z"
+              "WhenOpened": "2026-03-30T12:06:19.697Z",
+              "EditorCaption": ""
             }
           ]
         }
