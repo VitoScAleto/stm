@@ -1,5 +1,5 @@
-#define SWG_H
-#ifndef SWD_H
+#define SWD_H
+#ifdef SWD_H
 
 #include "stm32f1xx.h"
 void TxHex8(uint8_t val);

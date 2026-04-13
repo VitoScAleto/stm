@@ -1,7 +1,7 @@
 #include "../inc/swd.h"
 #include <stdint.h>
 #include "i2c_at24c256.c"
-
+#include "../inc/oled.h"
 // ================= КОНФИГУРАЦИЯ =================
 #define SWCLK_PORT   GPIOA
 #define SWCLK_PIN    8
@@ -941,218 +941,245 @@ int main(void)
     dwt_init();
 
     USART2_Init();
-    I2C1_Init_AT24C256();
+    //I2C1_Init_AT24C256();
     
+   I2C_GPIO_Init();
+    OLED_Init();
     
-    while (1)
-    {
-        switch (state_swd)
-        {
-            case STATE_WAIT_CMD:
-            {
-                if (byte_ready)
-                {
-                    uint8_t cmd = byte;
-                    byte_ready = 0;
-                    byte = 0;
-
-                    if (cmd == CMD_CHECK_TARGET)
-                    {
-                        if (swd_init_debug())
-                            Tx2(RESP_OK);
-                        else
-                            Tx2(RESP_ERR);
-                    }
-                    else if (cmd == CMD_START_PROGRAM)
-                    {
-                        count_byte = 0;
-                        word = 0;
-                        state_swd = STATE_WAIT_SIZE;
-                    }
-                    else if (cmd == CMD_END_PROGRAM)
-                    {
-                        swd_mem_write(0xE000ED0C, 0x05FA0004);
-                        Tx2(RESP_OK);
-                    }
-                    else if (cmd == CMD_EEPROM_SAVE)
-                    {
-                        count_byte = 0;
-                        word = 0;
-                        state_swd = STATE_EEPROM_WAIT_SIZE;
-                    }
-                    else if (cmd == CMD_EEPROM_COUNT)
-                    {
-                        eeprom_send_count();
-                    }
-                    else if (cmd == CMD_EEPROM_LIST)
-                    {
-                        eeprom_send_list();
-                    }
-                    else if (cmd == CMD_EEPROM_READ)
-                    {
-                        count_byte = 0;
-                        word = 0;
-                        state_swd = STATE_EEPROM_WAIT_INDEX;
-                    }
-                    else if (cmd == CMD_EEPROM_DELETE)
-                    {
-                        count_byte = 0;
-                        word = 0;
-                        state_swd = STATE_EEPROM_WAIT_DELETE_INDEX;
-                    }
-                }
-            } break;
-
-            case STATE_WAIT_SIZE:
-            {
-                if (count_byte == 4)
-                {
-                    size_programm = word;
-                    received_words = 0;
-                    address_flash = 0;
-
-                    word = 0;
-                    count_byte = 0;
-
-                    flash_unlock_target();
-                    Tx2(RESP_OK);
-
-                    state_swd = STATE_PROGRAM;
-                }
-            } break;
-
-            case STATE_PROGRAM:
-            {
-                if (count_byte == 4)
-                {
-                    if ((address_flash * 4u) % 0x400u == 0u)
-                    {
-                        if (!flash_erase_page(FLASH_BASE + address_flash * 4u))
-                        {
-                            flash_lock_target();
-                            Tx2(RESP_ERR);
-                            state_swd = STATE_WAIT_CMD;
-                            break;
-                        }
-                    }
-
-                    if (!flash_program_word32(FLASH_BASE + address_flash * 4u, word))
-                    {
-                        flash_lock_target();
-                        Tx2(RESP_ERR);
-                        state_swd = STATE_WAIT_CMD;
-                        break;
-                    }
-
-                    for (int i = 0; i < 4; i++)
-                    {
-                        Tx2((word >> (i * 8)) & 0xFF);
-                    }
-
-                    address_flash++;
-                    received_words++;
-
-                    word = 0;
-                    count_byte = 0;
-
-                    if (received_words >= size_programm)
-                    {
-                        flash_lock_target();
-                        state_swd = STATE_WAIT_CMD;
-                    }
-                }
-            } break;
-
-            case STATE_EEPROM_WAIT_SIZE:
-            {
-                if (count_byte == 4)
-                {
-                    uint32_t len = word;
-
-                    word = 0;
-                    count_byte = 0;
-                    rx_count = 0;
-
-                    if (eeprom_begin_save(len))
-                    {
-                        Tx2(RESP_OK);
-                        state_swd = STATE_EEPROM_RECV_DATA;
-                    }
-                    else
-                    {
-                        Tx2(RESP_ERR);
-                        state_swd = STATE_WAIT_CMD;
-                    }
-                }
-            } break;
-
-            case STATE_EEPROM_RECV_DATA:
-            {
-                if (rx_count > 0)
-                {
-                    uint32_t remain = eeprom_fw_size - eeprom_received;
-                    uint32_t chunk = rx_count;
-
-                    if (chunk > remain)
-                        chunk = remain;
-
-                    for (uint32_t i = 0; i < chunk; i++)
-                        eeprom_page_buf[i] = rx_buf[i];
-
-                    rx_count = 0;
-
-                    if (!eeprom_write_chunk(eeprom_page_buf, chunk))
-                    {
-                        Tx2(RESP_ERR);
-                        state_swd = STATE_WAIT_CMD;
-                        break;
-                    }
-
-                    Tx2(RESP_OK);
-
-                    if (eeprom_received >= eeprom_fw_size)
-                    {
-                        Tx2(RESP_OK);
-                        state_swd = STATE_WAIT_CMD;
-                    }
-                }
-            } break;
-
-            case STATE_EEPROM_WAIT_INDEX:
-            {
-                if (count_byte == 4)
-                {
-                    uint32_t index = word;
-
-                    word = 0;
-                    count_byte = 0;
-
-                    if (!eeprom_send_firmware(index))
-                    {
-                        uart_send_u32(0);
-                    }
-
-                    state_swd = STATE_WAIT_CMD;
-                }
-            } break;
-            case STATE_EEPROM_WAIT_DELETE_INDEX:
-            {
-                if (count_byte == 4)
-                {
-                    uint32_t index = word;
-
-                    word = 0;
-                    count_byte = 0;
-
-                    if (eeprom_delete_firmware(index))
-                        Tx2(RESP_OK);
-                    else
-                        Tx2(RESP_ERR);
-
-                    state_swd = STATE_WAIT_CMD;
-                }
-            } break;
-        }
+    // Тестовые рисунки
+    OLED_Fill(0);  // Очистка
+    
+    // Рамка
+    OLED_DrawRect(0, 0, OLED_WIDTH - 1, OLED_HEIGHT - 1, 1);
+    
+    // Линия
+    OLED_DrawLine(10, 10, 118, 54, 1);
+    
+    // Пиксели
+    for(int i = 20; i < 40; i++) {
+        OLED_SetPixel(i, 30, 1);
     }
+    
+    // Текст
+    OLED_DrawChar(60, 30, '5', 1);
+    OLED_DrawChar(66, 30, '6', 1);
+    
+    // Вывод на экран
+    OLED_Update();
+    
+    while(1) {
+        // Основной цикл
+    }
+    
+    // while (1)
+    // {
+    //     switch (state_swd)
+    //     {
+    //         case STATE_WAIT_CMD:
+    //         {
+    //             if (byte_ready)
+    //             {
+    //                 uint8_t cmd = byte;
+    //                 byte_ready = 0;
+    //                 byte = 0;
+
+    //                 if (cmd == CMD_CHECK_TARGET)
+    //                 {
+    //                     if (swd_init_debug())
+    //                         Tx2(RESP_OK);
+    //                     else
+    //                         Tx2(RESP_ERR);
+    //                 }
+    //                 else if (cmd == CMD_START_PROGRAM)
+    //                 {
+    //                     count_byte = 0;
+    //                     word = 0;
+    //                     state_swd = STATE_WAIT_SIZE;
+    //                 }
+    //                 else if (cmd == CMD_END_PROGRAM)
+    //                 {
+    //                     swd_mem_write(0xE000ED0C, 0x05FA0004);
+    //                     Tx2(RESP_OK);
+    //                 }
+    //                 else if (cmd == CMD_EEPROM_SAVE)
+    //                 {
+    //                     count_byte = 0;
+    //                     word = 0;
+    //                     state_swd = STATE_EEPROM_WAIT_SIZE;
+    //                 }
+    //                 else if (cmd == CMD_EEPROM_COUNT)
+    //                 {
+    //                     eeprom_send_count();
+    //                 }
+    //                 else if (cmd == CMD_EEPROM_LIST)
+    //                 {
+    //                     eeprom_send_list();
+    //                 }
+    //                 else if (cmd == CMD_EEPROM_READ)
+    //                 {
+    //                     count_byte = 0;
+    //                     word = 0;
+    //                     state_swd = STATE_EEPROM_WAIT_INDEX;
+    //                 }
+    //                 else if (cmd == CMD_EEPROM_DELETE)
+    //                 {
+    //                     count_byte = 0;
+    //                     word = 0;
+    //                     state_swd = STATE_EEPROM_WAIT_DELETE_INDEX;
+    //                 }
+    //             }
+    //         } break;
+
+    //         case STATE_WAIT_SIZE:
+    //         {
+    //             if (count_byte == 4)
+    //             {
+    //                 size_programm = word;
+    //                 received_words = 0;
+    //                 address_flash = 0;
+
+    //                 word = 0;
+    //                 count_byte = 0;
+
+    //                 flash_unlock_target();
+    //                 Tx2(RESP_OK);
+
+    //                 state_swd = STATE_PROGRAM;
+    //             }
+    //         } break;
+
+    //         case STATE_PROGRAM:
+    //         {
+    //             if (count_byte == 4)
+    //             {
+    //                 if ((address_flash * 4u) % 0x400u == 0u)
+    //                 {
+    //                     if (!flash_erase_page(FLASH_BASE + address_flash * 4u))
+    //                     {
+    //                         flash_lock_target();
+    //                         Tx2(RESP_ERR);
+    //                         state_swd = STATE_WAIT_CMD;
+    //                         break;
+    //                     }
+    //                 }
+
+    //                 if (!flash_program_word32(FLASH_BASE + address_flash * 4u, word))
+    //                 {
+    //                     flash_lock_target();
+    //                     Tx2(RESP_ERR);
+    //                     state_swd = STATE_WAIT_CMD;
+    //                     break;
+    //                 }
+
+    //                 for (int i = 0; i < 4; i++)
+    //                 {
+    //                     Tx2((word >> (i * 8)) & 0xFF);
+    //                 }
+
+    //                 address_flash++;
+    //                 received_words++;
+
+    //                 word = 0;
+    //                 count_byte = 0;
+
+    //                 if (received_words >= size_programm)
+    //                 {
+    //                     flash_lock_target();
+    //                     state_swd = STATE_WAIT_CMD;
+    //                 }
+    //             }
+    //         } break;
+
+    //         case STATE_EEPROM_WAIT_SIZE:
+    //         {
+    //             if (count_byte == 4)
+    //             {
+    //                 uint32_t len = word;
+
+    //                 word = 0;
+    //                 count_byte = 0;
+    //                 rx_count = 0;
+
+    //                 if (eeprom_begin_save(len))
+    //                 {
+    //                     Tx2(RESP_OK);
+    //                     state_swd = STATE_EEPROM_RECV_DATA;
+    //                 }
+    //                 else
+    //                 {
+    //                     Tx2(RESP_ERR);
+    //                     state_swd = STATE_WAIT_CMD;
+    //                 }
+    //             }
+    //         } break;
+
+    //         case STATE_EEPROM_RECV_DATA:
+    //         {
+    //             if (rx_count > 0)
+    //             {
+    //                 uint32_t remain = eeprom_fw_size - eeprom_received;
+    //                 uint32_t chunk = rx_count;
+
+    //                 if (chunk > remain)
+    //                     chunk = remain;
+
+    //                 for (uint32_t i = 0; i < chunk; i++)
+    //                     eeprom_page_buf[i] = rx_buf[i];
+
+    //                 rx_count = 0;
+
+    //                 if (!eeprom_write_chunk(eeprom_page_buf, chunk))
+    //                 {
+    //                     Tx2(RESP_ERR);
+    //                     state_swd = STATE_WAIT_CMD;
+    //                     break;
+    //                 }
+
+    //                 Tx2(RESP_OK);
+
+    //                 if (eeprom_received >= eeprom_fw_size)
+    //                 {
+    //                     Tx2(RESP_OK);
+    //                     state_swd = STATE_WAIT_CMD;
+    //                 }
+    //             }
+    //         } break;
+
+    //         case STATE_EEPROM_WAIT_INDEX:
+    //         {
+    //             if (count_byte == 4)
+    //             {
+    //                 uint32_t index = word;
+
+    //                 word = 0;
+    //                 count_byte = 0;
+
+    //                 if (!eeprom_send_firmware(index))
+    //                 {
+    //                     uart_send_u32(0);
+    //                 }
+
+    //                 state_swd = STATE_WAIT_CMD;
+    //             }
+    //         } break;
+    //         case STATE_EEPROM_WAIT_DELETE_INDEX:
+    //         {
+    //             if (count_byte == 4)
+    //             {
+    //                 uint32_t index = word;
+
+    //                 word = 0;
+    //                 count_byte = 0;
+
+    //                 if (eeprom_delete_firmware(index))
+    //                     Tx2(RESP_OK);
+    //                 else
+    //                     Tx2(RESP_ERR);
+
+    //                 state_swd = STATE_WAIT_CMD;
+    //             }
+    //         } break;
+    //     }
+    // }
     }
 

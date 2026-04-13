@@ -2,10 +2,10 @@
 PROJECT = stm32f103_project
 
 # Toolchain
-CC = "C:/Tools/arm-eabi-gcc9.2.1/bin/arm-none-eabi-gcc.exe"
-OBJCOPY = "C:/Tools/arm-eabi-gcc9.2.1/bin/arm-none-eabi-objcopy.exe"
-SIZE = "C:/Tools/arm-eabi-gcc9.2.1/bin//arm-none-eabi-size.exe"
-OPENOCD = "C:/Users/Chuma/Desktop/stm/OpenOCD-20250710-0.12.0/bin/openocd.exe"
+CC = C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/14.3 rel1/bin/arm-none-eabi-gcc.exe
+OBJCOPY = C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/14.3 rel1/bin/arm-none-eabi-objcopy.exe
+SIZE = C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/14.3 rel1/bin/arm-none-eabi-size.exe
+OPENOCD = C:/Users/pushk/Desktop/SWD/Stm_SWD/OpenOCD-20250710-0.12.0/bin/openocd.exe
 MKDIR = powershell -Command "New-Item -ItemType Directory -Force -Path"
 
 # MCU settings
@@ -20,7 +20,7 @@ LD_DIR = ld
 BUILD_DIR = build
 
 # Source files
-SRCS = $(SRC_DIR)/main.c $(SRC_DIR)/system_stm32f1xx.c $(SRC_DIR)/startup_stm32f103x6.s $(SRC_DIR)/usart.c $(SRC_DIR)/init.c
+SRCS = $(SRC_DIR)/main.c $(SRC_DIR)/system_stm32f1xx.c $(SRC_DIR)/startup_stm32f103x6.s $(SRC_DIR)/usart.c $(SRC_DIR)/init.c $(SRC_DIR)/oled.c
 
 # Compiler flags
 CFLAGS = -mcpu=$(MCU) -mthumb

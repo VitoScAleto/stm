@@ -1,6 +1,7 @@
 #include "../inc/swd.h"
 #include <stdint.h>
 
+#define I2C_TIMEOUT    100000UL
 #define AT24C256_I2C                I2C1
 #define AT24C256_ADDR_7BIT          0x50
 #define AT24C256_PAGE_SIZE          64
@@ -14,9 +15,9 @@ uint8_t AT24C256_ReadByte(uint16_t mem_addr, uint8_t *data);
 uint8_t AT24C256_WritePage(uint16_t mem_addr, const uint8_t *data, uint16_t len);
 uint8_t AT24C256_ReadBuffer(uint16_t mem_addr, uint8_t *data, uint16_t len);
 
-#define I2C_TIMEOUT    100000UL
+// PB6 - SCL PB7 - SDA
 
-static uint8_t i2c_wait_flag_set(volatile uint16_t *reg, uint16_t flag)
+static uint8_t i2c_wait_flag_set(volatile uint32_t *reg, uint16_t flag)
 {
     uint32_t timeout = I2C_TIMEOUT;
     while (((*reg) & flag) == 0U)
@@ -26,7 +27,7 @@ static uint8_t i2c_wait_flag_set(volatile uint16_t *reg, uint16_t flag)
     return 1;
 }
 
-static uint8_t i2c_wait_flag_clear(volatile uint16_t *reg, uint16_t flag)
+static uint8_t i2c_wait_flag_clear(volatile uint32_t *reg, uint16_t flag)
 {
     uint32_t timeout = I2C_TIMEOUT;
     while (((*reg) & flag) != 0U)
