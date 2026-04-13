@@ -1,7 +1,9 @@
 #include "../inc/swd.h"
 #include <stdint.h>
+#include <stdio.h>
 #include "i2c_at24c256.c"
 #include "../inc/oled.h"
+
 // ================= КОНФИГУРАЦИЯ =================
 #define SWCLK_PORT   GPIOA
 #define SWCLK_PIN    8
@@ -73,6 +75,11 @@
 #define CMD_EEPROM_DELETE    'D'
 
 #define UART_RX_BUF_SIZE     64
+
+// ================= КНОПКИ PB0, PB1 =================
+#define BUTTON_SELECT_PIN    (1 << 0)  // PB0
+#define BUTTON_OK_PIN        (1 << 1)  // PB1
+#define BUTTON_PORT          GPIOB
 
 static void dwt_init(void)
 {
@@ -199,7 +206,6 @@ static uint32_t swd_transfer(uint8_t req, uint32_t data)
 
         uint8_t parity_bit = swd_read_bit();
         if (parity_calc != parity_bit) {
-            // TxStr2((uint8_t *)"PARITY ERROR\r\n");
             Tx2('E');
         }
 
@@ -479,62 +485,6 @@ static int flash_program_word32(uint32_t addr, uint32_t data)
     return 1;
 }
 
-// static const uint32_t flash_image[] =
-// {
-//     0x20002800,0x08000139,0x08000135,0x08000135,
-//     0x08000135,0x08000135,0x08000135,0x00000000,
-//     0x00000000,0x00000000,0x00000000,0x08000135,
-//     0x08000135,0x00000000,0x08000135,0x08000135,
-//     0x08000135,0x08000135,0x08000135,0x08000135,
-//     0x08000135,0x08000135,0x08000135,0x08000135,
-//     0x08000135,0x08000135,0x08000135,0x08000135,
-//     0x08000135,0x08000135,0x08000135,0x08000135,
-//     0x08000135,0x08000135,0x08000135,0x08000135,
-//     0x08000135,0x08000135,0x08000135,0x08000135,
-//     0x08000135,0x08000135,0x08000135,0x08000135,
-//     0x080001C1,0x08000135,0x08000135,0x08000135,
-//     0x08000135,0x08000135,0x08000135,0x08000135,
-//     0x08000135,0x08000135,0x08000135,0x08000135,
-//     0x08000135,0x08000135,0x08000135,0x08000135,
-//     0x08000135,0x08000135,0x08000135,0x08000135,
-//     0x08000135,0x08000135,0x08000135,0x08000135,
-//     0x08000135,0x08000135,0x08000135,0x08000135,
-//     0x08000135,0x08000135,0x08000135,0x08000135,
-//     0x08000135,0x0000E7FE,0x4A0A4B09,0x428B490A,
-//     0x2100D306,0x4A0A4B09,0xD3064293,0xB84AF000,
-//     0x0B04F852,0x0B04F843,0xF843E7F1,0xE7F31B04,
-//     0x20000000,0x08000334,0x20000000,0x20000000,
-//     0x20000004,0x881A4B03,0xD5FC0612,0x8098B280,
-//     0xBF004770,0x40013800,0x881A4B03,0xD5FC0692,
-//     0xB2C08898,0xBF004770,0x40013800,0x2300B538,
-//     0x49064605,0x780B700B,0x5CE81C5C,0x700CB2E4,
-//     0xFFE0F7FF,0x2B005D2B,0xBD38D1F5,0x20000000,
-//     0x4280F04F,0x07DB8A13,0x8A13D50B,0x0301F023,
-//     0x0C1B041B,0xF5028213,0x68D33288,0x5300F483,
-//     0x477060D3,0xB5082212,0x601A4B3F,0x5380F5A3,
-//     0x605A685A,0xF442685A,0x605A6280,0x605A685A,
-//     0xF042685A,0x605A0202,0xF442685A,0x605A12E0,
-//     0xF442685A,0x605A3280,0xF442681A,0x601A3280,
-//     0x0391681A,0x681AD5FC,0x7280F042,0x681A601A,
-//     0xD5FC0192,0xF002685A,0x2A08020C,0xF04FD1FA,
-//     0x4A2A7100,0x60514C2A,0x680A492A,0x7280F042,
-//     0x2100600A,0x60114A28,0x680A4928,0x0201F042,
-//     0x2214600A,0x4A26619A,0xF4216851,0x60510170,
-//     0xF4416851,0x60511140,0xF442699A,0x619A4280,
-//     0x68514A20,0x01F0F021,0x68516051,0x6170F421,
-//     0x68516051,0x6192F441,0xF6416051,0xF502514C,
-//     0x81115240,0x010CF242,0x69DA8191,0x5180F04F,
-//     0x0201F042,0xF04F61DA,0xF6414380,0x851A421F,
-//     0x720FF242,0x899A859A,0xF042B292,0x819A0201,
-//     0x60114A0D,0x801A2201,0xFF56F7FF,0xD1FB2841,
-//     0xF7FF4620,0xE7F7FF5B,0x40022000,0x40010000,
-//     0x0800030C,0xE000EDFC,0xE0001004,0xE0001000,
-//     0x40011000,0x40010800,0xE000E100,0x6C6C6548,
-//     0x57202C6F,0x646C726F,0x000A0D21,0xBF00B5F8,
-//     0xBC08BCF8,0x4770469E,0xBF00B5F8,0xBC08BCF8,
-//     0x4770469E,0xFFFFFFFF,0xFFFFFFFF,0xFFFFFFFF
-// };
-
 static int flash_program_block(uint32_t base_addr, const uint32_t *data, uint32_t word_count)
 {
     for (uint32_t i = 0; i < word_count; i++) {
@@ -555,7 +505,6 @@ int check_target(){
     return !(id == 0xFFFFFFFF || id == 0x00000000);
 }
 
-
 volatile uint8_t byte = 0;
 volatile uint8_t count_byte = 0;
 volatile uint32_t word = 0;
@@ -564,7 +513,6 @@ typedef enum {
     STATE_WAIT_CMD,
     STATE_WAIT_SIZE,
     STATE_PROGRAM,
-
     STATE_EEPROM_WAIT_SIZE,
     STATE_EEPROM_RECV_DATA,
     STATE_EEPROM_WAIT_INDEX,
@@ -586,6 +534,7 @@ uint32_t eeprom_received = 0;
 uint32_t eeprom_write_addr = 0;
 uint32_t eeprom_read_index = 0;
 uint8_t  eeprom_page_buf[UART_RX_BUF_SIZE];
+
 static void uart_send_u32(uint32_t v)
 {
     Tx2((uint8_t)(v & 0xFF));
@@ -792,6 +741,7 @@ static int eeprom_send_firmware(uint32_t index)
 
     return 1;
 }
+
 static int eeprom_find_record_by_index(uint32_t index, uint16_t *record_addr, uint32_t *record_len)
 {
     uint16_t addr = 0;
@@ -823,6 +773,7 @@ static int eeprom_find_record_by_index(uint32_t index, uint16_t *record_addr, ui
 
     return 0;
 }
+
 static int eeprom_delete_firmware(uint32_t index)
 {
     uint16_t record_addr = 0;
@@ -841,27 +792,17 @@ static int eeprom_delete_firmware(uint32_t index)
     for (uint16_t i = 0; i < sizeof(ff); i++)
         ff[i] = 0xFF;
 
-    /* найти запись по индексу */
     if (!eeprom_find_record_by_index(index, &record_addr, &record_len))
         return 0;
 
-    /* найти конец всех записей */
     if (!eeprom_find_end(&end_addr, &count))
         return 0;
 
     delete_total_size = (uint16_t)(4u + record_len);
 
-    /*
-        src_addr = начало следующей записи после удаляемой
-        dst_addr = куда сдвигать
-    */
     src_addr = (uint16_t)(record_addr + delete_total_size);
     dst_addr = record_addr;
 
-    /*
-        Сдвигаем всё, что справа от удаляемой записи, влево.
-        Работаем блоками по 64 байта.
-    */
     while (src_addr < end_addr)
     {
         uint16_t remain = (uint16_t)(end_addr - src_addr);
@@ -893,6 +834,36 @@ static int eeprom_delete_firmware(uint32_t index)
 
     return 1;
 }
+
+// ================= ФУНКЦИИ КНОПОК =================
+static void Buttons_Init(void)
+{
+    RCC->APB2ENR |= RCC_APB2ENR_IOPBEN;
+    
+    GPIOB->CRL &= ~(0xF << (0 * 4));
+    GPIOB->CRL &= ~(0xF << (1 * 4));
+    
+    GPIOB->CRL |= (0x8 << (0 * 4));
+    GPIOB->CRL |= (0x8 << (1 * 4));
+    
+    GPIOB->ODR |= BUTTON_SELECT_PIN;
+    GPIOB->ODR |= BUTTON_OK_PIN;
+}
+
+static uint8_t Button_IsPressed(uint16_t pin)
+{
+    if (!(BUTTON_PORT->IDR & pin)) {
+        delay_us(50000);
+        if (!(BUTTON_PORT->IDR & pin)) {
+            while (!(BUTTON_PORT->IDR & pin)) {
+                delay_us(10000);
+            }
+            return 1;
+        }
+    }
+    return 0;
+}
+
 void USART2_IRQHandler(void)
 {
     if (USART2->SR & USART_SR_RXNE)
@@ -918,268 +889,517 @@ void USART2_IRQHandler(void)
         }
     }
 }
+
+#define FLASH_BASE_ADDR 0x08000000U
+#define FLASH_PAGE_SIZE 1024U
+
+static void flash_erase_all_needed(uint32_t base_addr, uint32_t size)
+{
+    uint32_t addr = base_addr;
+    uint32_t end  = base_addr + size;
+
+    while (addr < end)
+    {
+        flash_erase_page(addr);
+        addr += FLASH_PAGE_SIZE;
+    }
+}
+
+int ProgramFirmwareFromEEPROM(uint32_t index)
+{
+    uint16_t data_addr;
+    uint32_t len;
+
+    if (!eeprom_find_by_index(index, &data_addr, &len))
+        return 0;
+
+    uint8_t buf[64];
+    uint32_t read = 0;
+    uint32_t flash_addr = FLASH_BASE_ADDR;
+
+    flash_unlock_target();
+
+    // 🔥 ВАЖНО: очистка Flash перед записью
+    flash_erase_all_needed(FLASH_BASE_ADDR, len);
+
+    while (read < len)
+    {
+        uint16_t chunk = (len - read > sizeof(buf)) ? sizeof(buf) : (len - read);
+
+        if (!AT24C256_ReadBuffer(data_addr + read, buf, chunk))
+            return 0;
+
+        for (uint16_t i = 0; i < chunk; i += 4)
+        {
+            uint32_t word = 0xFFFFFFFF;
+
+            word  = buf[i];
+            if (i + 1 < chunk) word |= ((uint32_t)buf[i + 1] << 8);
+            if (i + 2 < chunk) word |= ((uint32_t)buf[i + 2] << 16);
+            if (i + 3 < chunk) word |= ((uint32_t)buf[i + 3] << 24);
+
+            if (!flash_program_word32(flash_addr, word))
+                return 0;
+
+            flash_addr += 4;
+        }
+
+        read += chunk;
+    }
+
+    flash_lock_target();
+    return 1;
+}
+uint32_t EEPROM_GetFirmwareCount(void)
+{
+    uint16_t end_addr = 0;
+    uint32_t count = 0;
+
+    if (!eeprom_find_end(&end_addr, &count))
+        return 0;
+
+    return count;
+}
+static void DisplayMenu(uint32_t selected, uint32_t total)
+{
+    OLED_Fill(0);
+    OLED_DrawString(0, 0, "FW Selector", 1);
+    OLED_DrawString(0, 8, "PB0=Select PB1=OK", 1);
+    OLED_DrawString(0, 24, "-------------", 1);
+
+    char line[32];
+    uint32_t start = (selected / 4) * 4;
+    uint8_t line_num = 0;
+
+    for (uint32_t i = 0; i < 4 && (start + i) < total && line_num < 4; i++)
+    {
+        if (start + i == selected)
+            sprintf(line, "> [%lu] FW %lu", (unsigned long)(i + 1), (unsigned long)(start + i + 1));
+        else
+            sprintf(line, "  [%lu] FW %lu", (unsigned long)(i + 1), (unsigned long)(start + i + 1));
+        OLED_DrawString(0, 30 + line_num * 8, line, 1);
+        line_num++;
+    }
+
+    if (total == 0)
+        OLED_DrawString(0, 30, "No firmware found", 1);
+
+    OLED_Update();
+}
+
+static void UI_RefreshMenu(uint32_t *selected_fw, uint32_t *fw_count)
+{
+    *fw_count = EEPROM_GetFirmwareCount();
+
+    if (*selected_fw >= *fw_count)
+        *selected_fw = 0;
+
+    OLED_Fill(0);
+    DisplayMenu(*selected_fw, *fw_count);
+    OLED_Update();
+}
+
+//================= MAIN =================
 int main(void)
 {
+    // ========== CLOCK ==========
     RCC->CR |= RCC_CR_HSEON;
-    while (!(RCC->CR & RCC_CR_HSERDY)) {
-    }
+    while (!(RCC->CR & RCC_CR_HSERDY));
 
     FLASH->ACR = FLASH_ACR_LATENCY_2;
 
     RCC->CFGR |= RCC_CFGR_PLLSRC | RCC_CFGR_PLLMULL9;
     RCC->CR |= RCC_CR_PLLON;
-    while (!(RCC->CR & RCC_CR_PLLRDY)) {
-    }
+    while (!(RCC->CR & RCC_CR_PLLRDY));
 
     RCC->CFGR |= RCC_CFGR_SW_PLL;
-    while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_PLL) {
-    }
+    while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_PLL);
 
     SystemCoreClock = 72000000;
 
+    // ========== INIT ==========
     swd_gpio_init();
     dwt_init();
-
     USART2_Init();
-    //I2C1_Init_AT24C256();
-    
-   I2C_GPIO_Init();
+    Buttons_Init();
+
+    I2C1_Init_AT24C256();
+    I2C_GPIO_Init();
+
+    delay_us(200000);
+
     OLED_Init();
-    
-    // Тестовые рисунки
-    OLED_Fill(0);  // Очистка
-    
-    // Рамка
-    OLED_DrawRect(0, 0, OLED_WIDTH - 1, OLED_HEIGHT - 1, 1);
-    
-    // Линия
-    OLED_DrawLine(10, 10, 118, 54, 1);
-    
-    // Пиксели
-    for(int i = 20; i < 40; i++) {
-        OLED_SetPixel(i, 30, 1);
-    }
-    
-    // Текст
-    OLED_DrawChar(60, 30, '5', 1);
-    OLED_DrawChar(66, 30, '6', 1);
-    
-    // Вывод на экран
+
+    OLED_Fill(1);
     OLED_Update();
-    
-    while(1) {
-        // Основной цикл
-    }
-    
-    // while (1)
-    // {
-    //     switch (state_swd)
-    //     {
-    //         case STATE_WAIT_CMD:
-    //         {
-    //             if (byte_ready)
-    //             {
-    //                 uint8_t cmd = byte;
-    //                 byte_ready = 0;
-    //                 byte = 0;
+    delay_us(200000);
 
-    //                 if (cmd == CMD_CHECK_TARGET)
-    //                 {
-    //                     if (swd_init_debug())
-    //                         Tx2(RESP_OK);
-    //                     else
-    //                         Tx2(RESP_ERR);
-    //                 }
-    //                 else if (cmd == CMD_START_PROGRAM)
-    //                 {
-    //                     count_byte = 0;
-    //                     word = 0;
-    //                     state_swd = STATE_WAIT_SIZE;
-    //                 }
-    //                 else if (cmd == CMD_END_PROGRAM)
-    //                 {
-    //                     swd_mem_write(0xE000ED0C, 0x05FA0004);
-    //                     Tx2(RESP_OK);
-    //                 }
-    //                 else if (cmd == CMD_EEPROM_SAVE)
-    //                 {
-    //                     count_byte = 0;
-    //                     word = 0;
-    //                     state_swd = STATE_EEPROM_WAIT_SIZE;
-    //                 }
-    //                 else if (cmd == CMD_EEPROM_COUNT)
-    //                 {
-    //                     eeprom_send_count();
-    //                 }
-    //                 else if (cmd == CMD_EEPROM_LIST)
-    //                 {
-    //                     eeprom_send_list();
-    //                 }
-    //                 else if (cmd == CMD_EEPROM_READ)
-    //                 {
-    //                     count_byte = 0;
-    //                     word = 0;
-    //                     state_swd = STATE_EEPROM_WAIT_INDEX;
-    //                 }
-    //                 else if (cmd == CMD_EEPROM_DELETE)
-    //                 {
-    //                     count_byte = 0;
-    //                     word = 0;
-    //                     state_swd = STATE_EEPROM_WAIT_DELETE_INDEX;
-    //                 }
-    //             }
-    //         } break;
+    OLED_Fill(0);
+    OLED_Update();
 
-    //         case STATE_WAIT_SIZE:
-    //         {
-    //             if (count_byte == 4)
-    //             {
-    //                 size_programm = word;
-    //                 received_words = 0;
-    //                 address_flash = 0;
+    // ========== SWD ==========
+    OLED_DrawString(0, 0, "Init SWD...", 1);
+    OLED_Update();
 
-    //                 word = 0;
-    //                 count_byte = 0;
+    if (!swd_init_debug())
+    {
+        OLED_DrawString(0, 16, "SWD ERROR!", 1);
+        OLED_Update();
 
-    //                 flash_unlock_target();
-    //                 Tx2(RESP_OK);
-
-    //                 state_swd = STATE_PROGRAM;
-    //             }
-    //         } break;
-
-    //         case STATE_PROGRAM:
-    //         {
-    //             if (count_byte == 4)
-    //             {
-    //                 if ((address_flash * 4u) % 0x400u == 0u)
-    //                 {
-    //                     if (!flash_erase_page(FLASH_BASE + address_flash * 4u))
-    //                     {
-    //                         flash_lock_target();
-    //                         Tx2(RESP_ERR);
-    //                         state_swd = STATE_WAIT_CMD;
-    //                         break;
-    //                     }
-    //                 }
-
-    //                 if (!flash_program_word32(FLASH_BASE + address_flash * 4u, word))
-    //                 {
-    //                     flash_lock_target();
-    //                     Tx2(RESP_ERR);
-    //                     state_swd = STATE_WAIT_CMD;
-    //                     break;
-    //                 }
-
-    //                 for (int i = 0; i < 4; i++)
-    //                 {
-    //                     Tx2((word >> (i * 8)) & 0xFF);
-    //                 }
-
-    //                 address_flash++;
-    //                 received_words++;
-
-    //                 word = 0;
-    //                 count_byte = 0;
-
-    //                 if (received_words >= size_programm)
-    //                 {
-    //                     flash_lock_target();
-    //                     state_swd = STATE_WAIT_CMD;
-    //                 }
-    //             }
-    //         } break;
-
-    //         case STATE_EEPROM_WAIT_SIZE:
-    //         {
-    //             if (count_byte == 4)
-    //             {
-    //                 uint32_t len = word;
-
-    //                 word = 0;
-    //                 count_byte = 0;
-    //                 rx_count = 0;
-
-    //                 if (eeprom_begin_save(len))
-    //                 {
-    //                     Tx2(RESP_OK);
-    //                     state_swd = STATE_EEPROM_RECV_DATA;
-    //                 }
-    //                 else
-    //                 {
-    //                     Tx2(RESP_ERR);
-    //                     state_swd = STATE_WAIT_CMD;
-    //                 }
-    //             }
-    //         } break;
-
-    //         case STATE_EEPROM_RECV_DATA:
-    //         {
-    //             if (rx_count > 0)
-    //             {
-    //                 uint32_t remain = eeprom_fw_size - eeprom_received;
-    //                 uint32_t chunk = rx_count;
-
-    //                 if (chunk > remain)
-    //                     chunk = remain;
-
-    //                 for (uint32_t i = 0; i < chunk; i++)
-    //                     eeprom_page_buf[i] = rx_buf[i];
-
-    //                 rx_count = 0;
-
-    //                 if (!eeprom_write_chunk(eeprom_page_buf, chunk))
-    //                 {
-    //                     Tx2(RESP_ERR);
-    //                     state_swd = STATE_WAIT_CMD;
-    //                     break;
-    //                 }
-
-    //                 Tx2(RESP_OK);
-
-    //                 if (eeprom_received >= eeprom_fw_size)
-    //                 {
-    //                     Tx2(RESP_OK);
-    //                     state_swd = STATE_WAIT_CMD;
-    //                 }
-    //             }
-    //         } break;
-
-    //         case STATE_EEPROM_WAIT_INDEX:
-    //         {
-    //             if (count_byte == 4)
-    //             {
-    //                 uint32_t index = word;
-
-    //                 word = 0;
-    //                 count_byte = 0;
-
-    //                 if (!eeprom_send_firmware(index))
-    //                 {
-    //                     uart_send_u32(0);
-    //                 }
-
-    //                 state_swd = STATE_WAIT_CMD;
-    //             }
-    //         } break;
-    //         case STATE_EEPROM_WAIT_DELETE_INDEX:
-    //         {
-    //             if (count_byte == 4)
-    //             {
-    //                 uint32_t index = word;
-
-    //                 word = 0;
-    //                 count_byte = 0;
-
-    //                 if (eeprom_delete_firmware(index))
-    //                     Tx2(RESP_OK);
-    //                 else
-    //                     Tx2(RESP_ERR);
-
-    //                 state_swd = STATE_WAIT_CMD;
-    //             }
-    //         } break;
-    //     }
-    // }
+        while (1)
+        {
+            led_toggle();
+            delay_us(500000);
+        }
     }
 
+    OLED_DrawString(0, 16, "SWD OK", 1);
+    OLED_Update();
+
+    delay_us(1000000);
+
+    // ========== STATE ==========
+    uint32_t fw_count = EEPROM_GetFirmwareCount();
+    uint32_t selected_fw = 0;
+    uint8_t last_sel = 0;
+    uint8_t last_ok = 0;
+
+    // ========== FIRST SCREEN ==========
+    OLED_Fill(0);
+
+    char info[32];
+    sprintf(info, "FW count: %lu", (unsigned long)fw_count);
+    OLED_DrawString(0, 0, info, 1);
+    OLED_DrawString(0, 16, "PB0=Select", 1);
+    OLED_DrawString(0, 24, "PB1=Program", 1);
+    OLED_Update();
+
+    delay_us(1500000);
+
+    UI_RefreshMenu(&selected_fw, &fw_count);
+
+    // ========== LOOP ==========
+    while (1)
+    {
+        uint8_t sel = Button_IsPressed(BUTTON_SELECT_PIN);
+        uint8_t ok  = Button_IsPressed(BUTTON_OK_PIN);
+
+        // ---- SELECT ----
+        if (sel && !last_sel)
+        {
+            if (fw_count > 0)
+            {
+                selected_fw++;
+                if (selected_fw >= fw_count)
+                    selected_fw = 0;
+
+                UI_RefreshMenu(&selected_fw, &fw_count);
+            }
+        }
+        last_sel = sel;
+
+        // ---- PROGRAM ----
+        if (ok && !last_ok)
+        {
+            if (fw_count > 0)
+            {
+                OLED_Fill(0);
+                OLED_DrawString(0, 0, "Programming...", 1);
+
+                char buf[32];
+                sprintf(buf, "FW #%lu", (unsigned long)(selected_fw + 1));
+                OLED_DrawString(0, 16, buf, 1);
+                OLED_Update();
+
+                if (!check_target())
+                {
+                    OLED_DrawString(0, 32, "Target lost!", 1);
+                    OLED_Update();
+                    delay_us(1000000);
+
+                    UI_RefreshMenu(&selected_fw, &fw_count);
+                    continue;
+                }
+
+                if (ProgramFirmwareFromEEPROM(selected_fw))
+                {
+                    OLED_Fill(0);
+                    OLED_DrawString(0, 0, "SUCCESS!", 1);
+                    OLED_DrawString(0, 16, "Resetting...", 1);
+                    OLED_Update();
+
+                    delay_us(800000);
+
+                    // reset target
+                    swd_mem_write(0xE000ED0C, 0x05FA0004);
+
+                    delay_us(300000);
+
+                    // 🔥 ВАЖНО: полный UI refresh
+                    UI_RefreshMenu(&selected_fw, &fw_count);
+                }
+                else
+                {
+                    OLED_Fill(0);
+                    OLED_DrawString(0, 0, "ERROR!", 1);
+                    OLED_DrawString(0, 16, "Programming failed!", 1);
+                    OLED_Update();
+
+                    delay_us(1500000);
+
+                    UI_RefreshMenu(&selected_fw, &fw_count);
+                }
+            }
+        }
+
+        last_ok = ok;
+
+        // ---- LED ----
+        static uint32_t t = 0;
+        if (DWT->CYCCNT - t > 72000000)
+        {
+            led_toggle();
+            t = DWT->CYCCNT;
+        }
+
+        delay_us(10000);
+    }
+}
+
+// int main(void)
+// {
+//     RCC->CR |= RCC_CR_HSEON;
+//     while (!(RCC->CR & RCC_CR_HSERDY)) {
+//     }
+
+//     FLASH->ACR = FLASH_ACR_LATENCY_2;
+
+//     RCC->CFGR |= RCC_CFGR_PLLSRC | RCC_CFGR_PLLMULL9;
+//     RCC->CR |= RCC_CR_PLLON;
+//     while (!(RCC->CR & RCC_CR_PLLRDY)) {
+//     }
+
+//     RCC->CFGR |= RCC_CFGR_SW_PLL;
+//     while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_PLL) {
+//     }
+
+//     SystemCoreClock = 72000000;
+
+//     swd_gpio_init();
+//     dwt_init();
+
+//     USART2_Init();
+//     I2C1_Init_AT24C256();
+    
+    
+//     while (1)
+//     {
+//         switch (state_swd)
+//         {
+//             case STATE_WAIT_CMD:
+//             {
+//                 if (byte_ready)
+//                 {
+//                     uint8_t cmd = byte;
+//                     byte_ready = 0;
+//                     byte = 0;
+
+//                     if (cmd == CMD_CHECK_TARGET)
+//                     {
+//                         if (swd_init_debug())
+//                             Tx2(RESP_OK);
+//                         else
+//                             Tx2(RESP_ERR);
+//                     }
+//                     else if (cmd == CMD_START_PROGRAM)
+//                     {
+//                         count_byte = 0;
+//                         word = 0;
+//                         state_swd = STATE_WAIT_SIZE;
+//                     }
+//                     else if (cmd == CMD_END_PROGRAM)
+//                     {
+//                         swd_mem_write(0xE000ED0C, 0x05FA0004);
+//                         Tx2(RESP_OK);
+//                     }
+//                     else if (cmd == CMD_EEPROM_SAVE)
+//                     {
+//                         count_byte = 0;
+//                         word = 0;
+//                         state_swd = STATE_EEPROM_WAIT_SIZE;
+//                     }
+//                     else if (cmd == CMD_EEPROM_COUNT)
+//                     {
+//                         eeprom_send_count();
+//                     }
+//                     else if (cmd == CMD_EEPROM_LIST)
+//                     {
+//                         eeprom_send_list();
+//                     }
+//                     else if (cmd == CMD_EEPROM_READ)
+//                     {
+//                         count_byte = 0;
+//                         word = 0;
+//                         state_swd = STATE_EEPROM_WAIT_INDEX;
+//                     }
+//                     else if (cmd == CMD_EEPROM_DELETE)
+//                     {
+//                         count_byte = 0;
+//                         word = 0;
+//                         state_swd = STATE_EEPROM_WAIT_DELETE_INDEX;
+//                     }
+//                 }
+//             } break;
+
+//             case STATE_WAIT_SIZE:
+//             {
+//                 if (count_byte == 4)
+//                 {
+//                     size_programm = word;
+//                     received_words = 0;
+//                     address_flash = 0;
+
+//                     word = 0;
+//                     count_byte = 0;
+
+//                     flash_unlock_target();
+//                     Tx2(RESP_OK);
+
+//                     state_swd = STATE_PROGRAM;
+//                 }
+//             } break;
+
+//             case STATE_PROGRAM:
+//             {
+//                 if (count_byte == 4)
+//                 {
+//                     if ((address_flash * 4u) % 0x400u == 0u)
+//                     {
+//                         if (!flash_erase_page(FLASH_BASE + address_flash * 4u))
+//                         {
+//                             flash_lock_target();
+//                             Tx2(RESP_ERR);
+//                             state_swd = STATE_WAIT_CMD;
+//                             break;
+//                         }
+//                     }
+
+//                     if (!flash_program_word32(FLASH_BASE + address_flash * 4u, word))
+//                     {
+//                         flash_lock_target();
+//                         Tx2(RESP_ERR);
+//                         state_swd = STATE_WAIT_CMD;
+//                         break;
+//                     }
+
+//                     for (int i = 0; i < 4; i++)
+//                     {
+//                         Tx2((word >> (i * 8)) & 0xFF);
+//                     }
+
+//                     address_flash++;
+//                     received_words++;
+
+//                     word = 0;
+//                     count_byte = 0;
+
+//                     if (received_words >= size_programm)
+//                     {
+//                         flash_lock_target();
+//                         state_swd = STATE_WAIT_CMD;
+//                     }
+//                 }
+//             } break;
+
+//             case STATE_EEPROM_WAIT_SIZE:
+//             {
+//                 if (count_byte == 4)
+//                 {
+//                     uint32_t len = word;
+
+//                     word = 0;
+//                     count_byte = 0;
+//                     rx_count = 0;
+
+//                     if (eeprom_begin_save(len))
+//                     {
+//                         Tx2(RESP_OK);
+//                         state_swd = STATE_EEPROM_RECV_DATA;
+//                     }
+//                     else
+//                     {
+//                         Tx2(RESP_ERR);
+//                         state_swd = STATE_WAIT_CMD;
+//                     }
+//                 }
+//             } break;
+
+//             case STATE_EEPROM_RECV_DATA:
+//             {
+//                 if (rx_count > 0)
+//                 {
+//                     uint32_t remain = eeprom_fw_size - eeprom_received;
+//                     uint32_t chunk = rx_count;
+
+//                     if (chunk > remain)
+//                         chunk = remain;
+
+//                     for (uint32_t i = 0; i < chunk; i++)
+//                         eeprom_page_buf[i] = rx_buf[i];
+
+//                     rx_count = 0;
+
+//                     if (!eeprom_write_chunk(eeprom_page_buf, chunk))
+//                     {
+//                         Tx2(RESP_ERR);
+//                         state_swd = STATE_WAIT_CMD;
+//                         break;
+//                     }
+
+//                     Tx2(RESP_OK);
+
+//                     if (eeprom_received >= eeprom_fw_size)
+//                     {
+//                         Tx2(RESP_OK);
+//                         state_swd = STATE_WAIT_CMD;
+//                     }
+//                 }
+//             } break;
+
+//             case STATE_EEPROM_WAIT_INDEX:
+//             {
+//                 if (count_byte == 4)
+//                 {
+//                     uint32_t index = word;
+
+//                     word = 0;
+//                     count_byte = 0;
+
+//                     if (!eeprom_send_firmware(index))
+//                     {
+//                         uart_send_u32(0);
+//                     }
+
+//                     state_swd = STATE_WAIT_CMD;
+//                 }
+//             } break;
+//             case STATE_EEPROM_WAIT_DELETE_INDEX:
+//             {
+//                 if (count_byte == 4)
+//                 {
+//                     uint32_t index = word;
+
+//                     word = 0;
+//                     count_byte = 0;
+
+//                     if (eeprom_delete_firmware(index))
+//                         Tx2(RESP_OK);
+//                     else
+//                         Tx2(RESP_ERR);
+
+//                     state_swd = STATE_WAIT_CMD;
+//                 }
+//             } break;
+//         }
+//     }
+//     }

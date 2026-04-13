@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include "../inc/stm32f1xx.h"
+
 // Регистры GPIOA
 #define GPIOA_CRL      (*((volatile uint32_t*)0x40010800))
 #define GPIOA_CRH      (*((volatile uint32_t*)0x40010804))
@@ -74,5 +75,6 @@ void OLED_Fill(uint8_t color);
 void OLED_DrawLine(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, uint8_t color);
 void OLED_DrawRect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t color);
 void OLED_DrawChar(uint8_t x, uint8_t y, char ch, uint8_t color);
+void OLED_DrawString(uint8_t x, uint8_t y, const char* str, uint8_t color);  // ДОБАВИТЬ ЭТУ СТРОКУ
 
 #endif
