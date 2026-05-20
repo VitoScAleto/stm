@@ -1,7 +1,7 @@
 #include "../inc/swd.h"
 #include <stdint.h>
 
-#define I2C_TIMEOUT    100000UL
+#define I2C_TIMEOUT    1000000UL
 #define AT24C256_I2C                I2C1
 #define AT24C256_ADDR_7BIT          0x50
 #define AT24C256_PAGE_SIZE          64

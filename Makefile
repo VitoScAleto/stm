@@ -38,12 +38,19 @@ LDFLAGS += -Wl,--gc-sections -Wl,--print-memory-usage
 OBJS = $(SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 OBJS := $(OBJS:$(SRC_DIR)/%.s=$(BUILD_DIR)/%.o)
 
-# Rules
-all: $(BUILD_DIR)/$(PROJECT).elf
+# Targets
+ELF_TARGET = $(BUILD_DIR)/$(PROJECT).elf
+BIN_TARGET = $(BUILD_DIR)/$(PROJECT).bin
 
-$(BUILD_DIR)/$(PROJECT).elf: $(OBJS)
+# Rules
+all: $(ELF_TARGET) $(BIN_TARGET)
+
+$(ELF_TARGET): $(OBJS)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 	$(SIZE) $@
+
+$(BIN_TARGET): $(ELF_TARGET)
+	$(OBJCOPY) -O binary $< $@
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 	$(MKDIR) $(BUILD_DIR)
@@ -53,10 +60,7 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.s
 	$(MKDIR) $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD_DIR)/$(PROJECT).bin: $(BUILD_DIR)/$(PROJECT).elf
-	$(OBJCOPY) -O binary $< $@
-
-flash: $(BUILD_DIR)/$(PROJECT).elf
+flash: $(ELF_TARGET)
 	$(OPENOCD) -f interface/stlink.cfg -f target/stm32f1x.cfg -c "program $< verify reset exit"
 
 clean:
