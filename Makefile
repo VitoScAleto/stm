@@ -20,8 +20,8 @@ LD_DIR = ld
 BUILD_DIR = build
 
 # Source files
-SRCS = $(SRC_DIR)/main.c $(SRC_DIR)/system_stm32f1xx.c $(SRC_DIR)/startup_stm32f103x6.s $(SRC_DIR)/usart.c $(SRC_DIR)/init.c $(SRC_DIR)/oled.c
-
+SRCS = $(SRC_DIR)/main.c $(SRC_DIR)/system_stm32f1xx.c $(SRC_DIR)/startup_stm32f103x6.s $(SRC_DIR)/usart.c $(SRC_DIR)/init.c $(SRC_DIR)/oled.c $(SRC_DIR)/at25df321a.c
+ 
 # Compiler flags
 CFLAGS = -mcpu=$(MCU) -mthumb
 CFLAGS += -D$(TARGET) -Og -g3
