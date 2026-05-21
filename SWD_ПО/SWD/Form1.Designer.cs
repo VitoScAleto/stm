@@ -46,6 +46,7 @@
             this.cbFirmwareList = new System.Windows.Forms.ComboBox();
             this.buttonDeleteFromEeprom = new System.Windows.Forms.Button();
             this.btnVerifyFirmware = new System.Windows.Forms.Button();
+            this.btnMemoryInfo = new System.Windows.Forms.Button();
 
             this.SuspendLayout();
             // 
@@ -212,11 +213,23 @@
             this.btnVerifyFirmware.UseVisualStyleBackColor = true;
             this.btnVerifyFirmware.Click += new System.EventHandler(this.btnVerifyFirmware_Click);
             // 
+            // btnMemoryInfo
+            // 
+            this.btnMemoryInfo.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnMemoryInfo.Location = new System.Drawing.Point(477, 339);
+            this.btnMemoryInfo.Name = "btnMemoryInfo";
+            this.btnMemoryInfo.Size = new System.Drawing.Size(192, 22);
+            this.btnMemoryInfo.TabIndex = 17;
+            this.btnMemoryInfo.Text = "Memory Info";
+            this.btnMemoryInfo.UseVisualStyleBackColor = true;
+            this.btnMemoryInfo.Click += new System.EventHandler(this.btnMemoryInfo_Click);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(681, 429);
+            this.Controls.Add(this.btnMemoryInfo);
             this.Controls.Add(this.btnVerifyFirmware);
             this.Controls.Add(this.buttonDeleteFromEeprom);
             this.Controls.Add(this.cbFirmwareList);
@@ -261,6 +274,7 @@
         private System.Windows.Forms.ComboBox cbFirmwareList;
         private System.Windows.Forms.Button buttonDeleteFromEeprom;
         private System.Windows.Forms.Button btnVerifyFirmware;
+        private System.Windows.Forms.Button btnMemoryInfo;
     }
 }
 

@@ -452,11 +452,11 @@ namespace SWD
             Log("Send command: EEPROM_INFO (I)");
             port.Write(new[] { CmdEepromInfo }, 0, 1);
 
-            byte[] buffer = new byte[128];
+            byte[] buffer = new byte[256];
             int read = 0;
             DateTime start = DateTime.Now;
 
-            while ((DateTime.Now - start).TotalMilliseconds < 1000)
+            while ((DateTime.Now - start).TotalMilliseconds < 1500)
             {
                 try
                 {
@@ -518,6 +518,7 @@ namespace SWD
             btnFlashFromEeprom.Enabled = enabled;
             btnClearLog.Enabled = enabled;
             btnVerifyFirmware.Enabled = enabled;
+            btnMemoryInfo.Enabled = enabled;
 
             cbPorts.Enabled = enabled;
             cbFirmwareList.Enabled = enabled;
@@ -537,6 +538,9 @@ namespace SWD
                 using (SerialPort port = OpenSelectedPort())
                 {
                     string info = await ReadMemoryInfoAsync(port);
+
+                    if (string.IsNullOrWhiteSpace(info))
+                        throw new IOException("STM32 не вернул информацию о памяти.");
 
                     lblStatus.Text = "Memory info";
                     MessageBox.Show(info, "EEPROM Memory Info",
