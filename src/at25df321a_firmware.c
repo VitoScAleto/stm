@@ -308,24 +308,50 @@ uint32_t Firmware_GetList(FirmwareHeader_t* headers, uint32_t* addresses, uint32
     return count;
 }
 
-bool Firmware_Verify(uint32_t address, uint32_t* crc32) {
+bool Firmware_Verify(uint32_t address, uint32_t* crc32)
+{
     if(!initialized) Firmware_Init();
-    if(!crc32) return false;
 
     FirmwareHeader_t header;
-    AT25_ReadData(address, (uint8_t*)&header, sizeof(header));
-    if(header.magic != FIRMWARE_MAGIC) return false;
+    AT25_ReadData(address, (uint8_t*)&header, sizeof(FirmwareHeader_t));
 
-    uint8_t* buffer = (uint8_t*)malloc(header.size);
-    if(!buffer) return false;
+    if(header.magic != FIRMWARE_MAGIC)
+        return false;
 
-    AT25_ReadData(address + FIRMWARE_HEADER_SIZE, buffer, header.size);
-    *crc32 = CalculateCRC32(buffer, header.size);
-    free(buffer);
+    uint32_t crc = 0xFFFFFFFF;
+    uint8_t buffer[64];
 
-    return *crc32 == header.crc32;
+    uint32_t remaining = header.size;
+    uint32_t offset = 0;
+
+    while(remaining > 0)
+    {
+        uint32_t chunk = remaining > sizeof(buffer) ? sizeof(buffer) : remaining;
+
+        AT25_ReadData(address + FIRMWARE_HEADER_SIZE + offset, buffer, chunk);
+
+        for(uint32_t i = 0; i < chunk; i++)
+        {
+            crc ^= buffer[i];
+
+            for(uint8_t j = 0; j < 8; j++)
+            {
+                if(crc & 1)
+                    crc = (crc >> 1) ^ 0xEDB88320;
+                else
+                    crc >>= 1;
+            }
+        }
+
+        offset += chunk;
+        remaining -= chunk;
+    }
+
+    crc = ~crc;
+    *crc32 = crc;
+
+    return crc == header.crc32;
 }
-
 bool Firmware_FlashToInternal(uint32_t ext_address, uint32_t int_address, uint32_t size) {
     if(!initialized) Firmware_Init();
 

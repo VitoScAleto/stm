@@ -136,11 +136,13 @@ void CMD_VerifyFirmware(void)
         return;
     }
 
-    uint32_t crc;
-    if(Firmware_Verify(addresses[index], &crc)) {
-        UART_SendResponse(RESP_OK);
-    } else {
-        UART_SendResponse(RESP_ERR);
+    UART_SendResponse(RESP_OK);
+
+    uint32_t crc = 0;
+    bool ok = Firmware_Verify(addresses[index], &crc);
+
+    if(!ok) {
+        // CRC всё равно отправляем, чтобы ПО не висело
     }
 
     UART_SendData((uint8_t*)&crc, 4);

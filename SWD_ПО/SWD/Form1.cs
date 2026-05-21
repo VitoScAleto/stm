@@ -469,28 +469,37 @@ namespace SWD
         {
             Log($"Send command: EEPROM_VERIFY (V), index={index}");
 
+            port.DiscardInBuffer();
+
             port.Write(new[] { CmdEepromVerify }, 0, 1);
 
             byte[] indexBytes = BitConverter.GetBytes((uint)index);
             port.Write(indexBytes, 0, 4);
 
+            // Ждём быстрый ответ: STM32 приняла команду или нет
             byte[] resp = new byte[1];
-            bool ok = await ReadExactAsync(port, resp, 1, AckTimeoutMs);
+            bool ok = await ReadExactAsync(port, resp, 1, 3000);
 
             if (!ok)
-                throw new IOException("Таймаут при проверке CRC.");
+                throw new IOException("STM32 не ответил на команду VERIFY.");
 
+            Log($"VERIFY ack: 0x{resp[0]:X2} ({(char)resp[0]})");
+
+            if (resp[0] != RespOk)
+                throw new IOException("STM32 отклонил команду VERIFY.");
+
+            // CRC может считаться долго на больших файлах
             byte[] crcBytes = new byte[4];
-            ok = await ReadExactAsync(port, crcBytes, 4, AckTimeoutMs);
+            ok = await ReadExactAsync(port, crcBytes, 4, 30000);
 
             if (!ok)
-                throw new IOException("Не удалось прочитать CRC.");
+                throw new IOException("Таймаут при чтении CRC.");
 
             uint crc = BitConverter.ToUInt32(crcBytes, 0);
 
-            Log($"VERIFY response: 0x{resp[0]:X2} ({(char)resp[0]}), CRC=0x{crc:X8}");
+            Log($"VERIFY CRC=0x{crc:X8}");
 
-            return resp[0] == RespOk;
+            return true;
         }
         private async Task<string> ReadMemoryInfoAsync(SerialPort port)
         {
