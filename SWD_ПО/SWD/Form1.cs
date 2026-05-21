@@ -28,6 +28,7 @@ namespace SWD
         private const byte CmdEepromVerify = (byte)'V';
         private const byte CmdEepromDelete = (byte)'D';
         private const byte CmdEepromActivate = (byte)'A';
+        private const byte CmdEepromFlashToTarget = (byte)'F';
         private const int EepromChunkSize = 64;
 
         public Form1()
@@ -178,19 +179,13 @@ namespace SWD
                 throw new IOException("Выберите COM-порт.");
 
             SerialPort port = new SerialPort(portName, BaudRate, Parity.None, 8, StopBits.One);
-
-            port.ReadTimeout = 500;
-            port.WriteTimeout = 5000;
-
-            port.DtrEnable = false;
-            port.RtsEnable = false;
+            port.ReadTimeout = AckTimeoutMs;
+            port.WriteTimeout = AckTimeoutMs;
 
             port.Open();
 
             if (!port.IsOpen)
                 throw new IOException("Не удалось открыть COM-порт.");
-
-            Thread.Sleep(700);
 
             port.DiscardInBuffer();
             port.DiscardOutBuffer();
@@ -480,13 +475,13 @@ namespace SWD
             port.Write(indexBytes, 0, 4);
 
             byte[] resp = new byte[1];
-            bool ok = await ReadExactAsync(port, resp, 1, 15000);
+            bool ok = await ReadExactAsync(port, resp, 1, AckTimeoutMs);
 
             if (!ok)
                 throw new IOException("Таймаут при проверке CRC.");
 
             byte[] crcBytes = new byte[4];
-            ok = await ReadExactAsync(port, crcBytes, 4, 15000);
+            ok = await ReadExactAsync(port, crcBytes, 4, AckTimeoutMs);
 
             if (!ok)
                 throw new IOException("Не удалось прочитать CRC.");
@@ -522,6 +517,74 @@ namespace SWD
             Log(text.Trim());
 
             return text;
+        }
+
+        private async Task<bool> FlashFirmwareFromAt25Async(SerialPort port, int index)
+        {
+            Log($"Send command: EEPROM_FLASH_TO_TARGET (F), index={index}");
+
+            port.Write(new[] { CmdEepromFlashToTarget }, 0, 1);
+
+            byte[] indexBytes = BitConverter.GetBytes((uint)index);
+            port.Write(indexBytes, 0, 4);
+
+            byte[] resp = new byte[1];
+
+            // STM32 сначала готовит SWD target: reset, init debug, erase flash.
+            // Это может занимать несколько секунд.
+            bool ok = await ReadExactAsync(port, resp, 1, 20000);
+            if (!ok)
+                throw new IOException("Таймаут при подготовке прошивки из AT25.");
+
+            if (resp[0] != RespOk)
+            {
+                Log($"EEPROM_FLASH_TO_TARGET prepare response: 0x{resp[0]:X2} ({(char)resp[0]})");
+                return false;
+            }
+
+            byte[] sizeBytes = new byte[4];
+            ok = await ReadExactAsync(port, sizeBytes, 4, 5000);
+            if (!ok)
+                throw new IOException("Не удалось прочитать размер прошивки из AT25.");
+
+            int size = BitConverter.ToInt32(sizeBytes, 0);
+            if (size <= 0)
+                throw new IOException("Некорректный размер прошивки в AT25: " + size);
+
+            int totalChunks = (size + EepromChunkSize - 1) / EepromChunkSize;
+
+            progressBar.Minimum = 0;
+            progressBar.Maximum = totalChunks;
+            progressBar.Value = 0;
+
+            Log($"AT25 firmware size = {size} bytes");
+            Log($"AT25 flash chunks = {totalChunks}");
+
+            for (int i = 0; i < totalChunks; i++)
+            {
+                ok = await ReadExactAsync(port, resp, 1, 20000);
+                if (!ok)
+                    throw new IOException("Таймаут при прошивке чанка из AT25: " + (i + 1));
+
+                if (resp[0] != RespOk)
+                {
+                    Log($"AT25 flash chunk {i + 1} response: 0x{resp[0]:X2} ({(char)resp[0]})");
+                    return false;
+                }
+
+                progressBar.Value = i + 1;
+                lblStatus.Text = $"Flashing from AT25: {i + 1}/{totalChunks}";
+                Log($"AT25 flash chunk {i + 1}/{totalChunks} OK");
+                Application.DoEvents();
+            }
+
+            ok = await ReadExactAsync(port, resp, 1, 20000);
+            if (!ok)
+                throw new IOException("Таймаут финального подтверждения прошивки из AT25.");
+
+            Log($"EEPROM_FLASH_TO_TARGET final response: 0x{resp[0]:X2} ({(char)resp[0]})");
+
+            return resp[0] == RespOk;
         }
 
         private static async Task<bool> ReadExactAsync(SerialPort port, byte[] buffer, int length, int timeoutMs)
@@ -701,40 +764,44 @@ namespace SWD
         {
             if (cbFirmwareList.Items.Count == 0)
             {
-                MessageBox.Show("Список прошивок пуст. Сначала нажмите кнопку подсчёта прошивок.", "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show("Список прошивок пуст. Сначала нажмите кнопку подсчёта прошивок.",
+                    "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
             if (cbFirmwareList.SelectedIndex < 0)
             {
-                MessageBox.Show("Выберите прошивку из списка.", "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show("Выберите прошивку из списка.",
+                    "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
+            int index = cbFirmwareList.SelectedIndex;
+
             SetUiEnabled(false);
             progressBar.Value = 0;
-            lblStatus.Text = "Reading from EEPROM...";
+            lblStatus.Text = "Flashing from AT25...";
 
             try
             {
-                int index = cbFirmwareList.SelectedIndex;
-
                 using (SerialPort port = OpenSelectedPort())
                 {
-                    bool ok = await ActivateFirmwareAsync(port, index);
+                    bool ok = await FlashFirmwareFromAt25Async(port, index);
                     if (!ok)
-                        throw new IOException("Не удалось активировать прошивку.");
+                        throw new IOException("Не удалось прошить target из AT25.");
                 }
 
-                Log("Firmware activated");
-                lblStatus.Text = "Activated";
-                MessageBox.Show("Выбранная прошивка отмечена активной в EEPROM.", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                Log("Flash from AT25 complete");
+                lblStatus.Text = "Flashed from AT25";
+                MessageBox.Show("Target STM32 прошит выбранной прошивкой из AT25.",
+                    "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
                 Log("ERROR: " + ex.Message);
                 lblStatus.Text = "Error";
-                MessageBox.Show(ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(ex.Message, "Ошибка",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {

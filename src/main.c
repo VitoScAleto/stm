@@ -632,6 +632,88 @@ static void CMD_DirectSwdEndProgram(void)
     UART_SendByte(RESP_OK);
 }
 
+// Команда 'F':
+// PC -> STM32: 'F' + uint32_t index
+// STM32 -> PC: K + uint32_t firmware_size
+// STM32 -> PC: K после каждого 64-byte чанка
+// STM32 -> PC: финальный K
+static void CMD_FlashFirmwareFromAT25(void)
+{
+    uint8_t index_bytes[4];
+
+    if (!UART_ReceiveExactLocal(index_bytes, 4, 3000000u)) {
+        UART_SendByte(RESP_ERR);
+        return;
+    }
+
+    uint32_t index = ((uint32_t)index_bytes[0]) |
+                     ((uint32_t)index_bytes[1] << 8) |
+                     ((uint32_t)index_bytes[2] << 16) |
+                     ((uint32_t)index_bytes[3] << 24);
+
+    FirmwareHeader_t headers[MAX_FIRMWARE_COUNT];
+    uint32_t addresses[MAX_FIRMWARE_COUNT];
+
+    uint32_t count = Firmware_GetList(headers, addresses, MAX_FIRMWARE_COUNT);
+
+    if (index >= count) {
+        UART_SendByte(RESP_ERR);
+        return;
+    }
+
+    uint32_t firmware_size = headers[index].size;
+    uint32_t firmware_addr = addresses[index] + FIRMWARE_HEADER_SIZE;
+
+    if (firmware_size == 0u) {
+        UART_SendByte(RESP_ERR);
+        return;
+    }
+
+    uint32_t program_size = (firmware_size + 3u) & ~3u;
+
+    if (!swd_prepare_target_for_program(program_size)) {
+        UART_SendByte(RESP_ERR);
+        return;
+    }
+
+    UART_SendByte(RESP_OK);
+    UART_SendU32(firmware_size);
+
+    uint8_t buffer[64];
+    uint32_t offset = 0;
+
+    while (offset < firmware_size) {
+        uint32_t chunk = firmware_size - offset;
+        if (chunk > sizeof(buffer)) {
+            chunk = sizeof(buffer);
+        }
+
+        memset(buffer, 0xFF, sizeof(buffer));
+        AT25_ReadData(firmware_addr + offset, buffer, chunk);
+
+        uint32_t chunk_program_size = (chunk + 3u) & ~3u;
+
+        for (uint32_t i = 0; i < chunk_program_size; i += 4u) {
+            uint32_t word = ((uint32_t)buffer[i]) |
+                            ((uint32_t)buffer[i + 1u] << 8) |
+                            ((uint32_t)buffer[i + 2u] << 16) |
+                            ((uint32_t)buffer[i + 3u] << 24);
+
+            if (!flash_program_word32(FLASH_BASE_ADDR + offset + i, word)) {
+                flash_lock_target();
+                UART_SendByte(RESP_ERR);
+                return;
+            }
+        }
+
+        offset += chunk;
+        UART_SendByte(RESP_OK);
+    }
+
+    flash_lock_target();
+    UART_SendByte(RESP_OK);
+}
+
 
 
 void UART_SendByte(uint8_t data) {
@@ -689,6 +771,8 @@ int main(void) {
                 CMD_DirectSwdProgramFile();
             } else if (cmd == CMD_END_PROGRAM) {
                 CMD_DirectSwdEndProgram();
+            } else if (cmd == 'F') {
+                CMD_FlashFirmwareFromAT25();
             } else {
                 UART_Firmware_ProcessCommand(cmd);
             }

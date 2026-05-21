@@ -180,7 +180,7 @@
             this.btnFlashFromEeprom.Name = "btnFlashFromEeprom";
             this.btnFlashFromEeprom.Size = new System.Drawing.Size(192, 22);
             this.btnFlashFromEeprom.TabIndex = 13;
-            this.btnFlashFromEeprom.Text = "Flash from EEPROM";
+            this.btnFlashFromEeprom.Text = "Flash from AT25";
             this.btnFlashFromEeprom.UseVisualStyleBackColor = true;
             this.btnFlashFromEeprom.Click += new System.EventHandler(this.btnFlashFromEeprom_Click);
             // 
