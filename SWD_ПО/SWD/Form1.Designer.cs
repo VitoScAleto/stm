@@ -47,6 +47,7 @@
             this.buttonDeleteFromEeprom = new System.Windows.Forms.Button();
             this.btnVerifyFirmware = new System.Windows.Forms.Button();
             this.btnMemoryInfo = new System.Windows.Forms.Button();
+            this.btnFlashFileSwd = new System.Windows.Forms.Button();
 
             this.SuspendLayout();
             // 
@@ -224,11 +225,23 @@
             this.btnMemoryInfo.UseVisualStyleBackColor = true;
             this.btnMemoryInfo.Click += new System.EventHandler(this.btnMemoryInfo_Click);
             // 
+            // btnFlashFileSwd
+            // 
+            this.btnFlashFileSwd.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnFlashFileSwd.Location = new System.Drawing.Point(477, 367);
+            this.btnFlashFileSwd.Name = "btnFlashFileSwd";
+            this.btnFlashFileSwd.Size = new System.Drawing.Size(192, 22);
+            this.btnFlashFileSwd.TabIndex = 18;
+            this.btnFlashFileSwd.Text = "Flash .bin by SWD";
+            this.btnFlashFileSwd.UseVisualStyleBackColor = true;
+            this.btnFlashFileSwd.Click += new System.EventHandler(this.btnFlashFileSwd_Click);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(681, 429);
+            this.Controls.Add(this.btnFlashFileSwd);
             this.Controls.Add(this.btnMemoryInfo);
             this.Controls.Add(this.btnVerifyFirmware);
             this.Controls.Add(this.buttonDeleteFromEeprom);
@@ -275,6 +288,7 @@
         private System.Windows.Forms.Button buttonDeleteFromEeprom;
         private System.Windows.Forms.Button btnVerifyFirmware;
         private System.Windows.Forms.Button btnMemoryInfo;
+        private System.Windows.Forms.Button btnFlashFileSwd;
     }
 }
 

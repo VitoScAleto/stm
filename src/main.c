@@ -4,6 +4,12 @@
 #include "i2c_at24c256.c"
 #include "../inc/oled.h"
 
+#include "../inc/at25df321a_firmware.h"
+#include "../inc/uart_firmware_handler.h"
+#include "../inc/at25df321a.h"
+#include "../inc/stm32f1xx.h"
+#include <stdint.h>
+#include <string.h>
 // ================= КОНФИГУРАЦИЯ =================
 #define SWCLK_PORT   GPIOA
 #define SWCLK_PIN    8
@@ -501,12 +507,132 @@ static void flash_erase_all_needed(uint32_t base_addr, uint32_t size)
 }
 
 
-#include "../inc/at25df321a_firmware.h"
-#include "../inc/uart_firmware_handler.h"
-#include "../inc/at25df321a.h"
-#include "../inc/stm32f1xx.h"
-#include <stdint.h>
-#include <string.h>
+void UART_SendByte(uint8_t data);
+
+static int swd_prepare_target_for_program(uint32_t firmware_size)
+{
+    swd_gpio_init();
+    dwt_init();
+
+    NRST_LOW();
+    delay_us(5000);
+    NRST_HIGH();
+    delay_us(50000);
+
+    if (!swd_init_debug()) {
+        return 0;
+    }
+
+    flash_unlock_target();
+    flash_erase_all_needed(FLASH_BASE_ADDR, firmware_size);
+
+    return 1;
+}
+
+static void UART_SendU32(uint32_t value)
+{
+    UART_SendByte((uint8_t)(value & 0xFFu));
+    UART_SendByte((uint8_t)((value >> 8) & 0xFFu));
+    UART_SendByte((uint8_t)((value >> 16) & 0xFFu));
+    UART_SendByte((uint8_t)((value >> 24) & 0xFFu));
+}
+
+static int UART_ReceiveExactLocal(uint8_t *buffer, uint32_t length, uint32_t timeout_loops)
+{
+    uint32_t received = 0;
+    uint32_t timeout = timeout_loops;
+
+    while (received < length) {
+        if (USART2->SR & USART_SR_RXNE) {
+            buffer[received++] = (uint8_t)USART2->DR;
+            timeout = timeout_loops;
+        } else {
+            if (timeout-- == 0u) {
+                return 0;
+            }
+        }
+    }
+
+    return 1;
+}
+
+static void CMD_DirectSwdCheckTarget(void)
+{
+    swd_gpio_init();
+    dwt_init();
+
+    NRST_LOW();
+    delay_us(5000);
+    NRST_HIGH();
+    delay_us(50000);
+
+    if (swd_init_debug() && check_target()) {
+        UART_SendByte(RESP_OK);
+    } else {
+        UART_SendByte(RESP_ERR);
+    }
+}
+
+static void CMD_DirectSwdProgramFile(void)
+{
+    uint8_t size_bytes[4];
+
+    if (!UART_ReceiveExactLocal(size_bytes, 4, 3000000u)) {
+        UART_SendByte(RESP_ERR);
+        return;
+    }
+
+    uint32_t total_words = ((uint32_t)size_bytes[0]) |
+                           ((uint32_t)size_bytes[1] << 8) |
+                           ((uint32_t)size_bytes[2] << 16) |
+                           ((uint32_t)size_bytes[3] << 24);
+
+    if (total_words == 0u) {
+        UART_SendByte(RESP_ERR);
+        return;
+    }
+
+    uint32_t firmware_size = total_words * 4u;
+
+    if (!swd_prepare_target_for_program(firmware_size)) {
+        UART_SendByte(RESP_ERR);
+        return;
+    }
+
+    UART_SendByte(RESP_OK);
+
+    for (uint32_t i = 0; i < total_words; i++) {
+        uint8_t word_bytes[4];
+
+        if (!UART_ReceiveExactLocal(word_bytes, 4, 3000000u)) {
+            flash_lock_target();
+            UART_SendByte(RESP_ERR);
+            return;
+        }
+
+        uint32_t word = ((uint32_t)word_bytes[0]) |
+                        ((uint32_t)word_bytes[1] << 8) |
+                        ((uint32_t)word_bytes[2] << 16) |
+                        ((uint32_t)word_bytes[3] << 24);
+
+        if (!flash_program_word32(FLASH_BASE_ADDR + i * 4u, word)) {
+            flash_lock_target();
+            UART_SendByte(RESP_ERR);
+            return;
+        }
+
+        UART_SendU32(word);
+    }
+
+    flash_lock_target();
+}
+
+static void CMD_DirectSwdEndProgram(void)
+{
+    UART_SendByte(RESP_OK);
+}
+
+
 
 void UART_SendByte(uint8_t data) {
     while(!(USART2->SR & USART_SR_TXE));
@@ -539,7 +665,7 @@ void SystemClock_Init(void) {
 int main(void) {
     SystemClock_Init();
     USART2_Init();
-
+   
     UART_SendString("\r\n========================================\r\n");
     UART_SendString("System Started at 72MHz\r\n");
     UART_SendString("========================================\r\n");
@@ -554,7 +680,18 @@ int main(void) {
     while(1) {
         if(USART2->SR & USART_SR_RXNE) {
             uint8_t cmd = (uint8_t)USART2->DR;
-            UART_Firmware_ProcessCommand(cmd);
+
+            // Прямая прошивка target через SWD из файла на ПК.
+            // Эти команды использует кнопка "Flash .bin by SWD" в C# ПО.
+            if (cmd == CMD_CHECK_TARGET) {
+                CMD_DirectSwdCheckTarget();
+            } else if (cmd == CMD_START_PROGRAM) {
+                CMD_DirectSwdProgramFile();
+            } else if (cmd == CMD_END_PROGRAM) {
+                CMD_DirectSwdEndProgram();
+            } else {
+                UART_Firmware_ProcessCommand(cmd);
+            }
         }
     }
 }

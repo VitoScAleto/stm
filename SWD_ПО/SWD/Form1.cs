@@ -85,6 +85,50 @@ namespace SWD
             await StartTransferAsync();
         }
 
+        private async void btnFlashFileSwd_Click(object sender, EventArgs e)
+        {
+            await FlashFileBySwdAsync();
+        }
+
+        private async Task FlashFileBySwdAsync()
+        {
+            string filePath = tbFile.Text.Trim();
+
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            {
+                MessageBox.Show("Выберите .bin файл.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            SetUiEnabled(false);
+            progressBar.Value = 0;
+            lblStatus.Text = "Flashing by SWD...";
+
+            try
+            {
+                byte[] fileData = File.ReadAllBytes(filePath);
+
+                using (SerialPort port = OpenSelectedPort())
+                {
+                    await ProgramTargetAsync(port, fileData);
+                }
+
+                Log("Direct SWD flash complete");
+                lblStatus.Text = "SWD flash done";
+                MessageBox.Show("Файл прошит напрямую по SWD.", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                Log("ERROR: " + ex.Message);
+                lblStatus.Text = "Error";
+                MessageBox.Show(ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                SetUiEnabled(true);
+            }
+        }
+
         private async Task StartTransferAsync()
         {
             string filePath = tbFile.Text.Trim();
@@ -134,13 +178,19 @@ namespace SWD
                 throw new IOException("Выберите COM-порт.");
 
             SerialPort port = new SerialPort(portName, BaudRate, Parity.None, 8, StopBits.One);
-            port.ReadTimeout = AckTimeoutMs;
-            port.WriteTimeout = AckTimeoutMs;
+
+            port.ReadTimeout = 500;
+            port.WriteTimeout = 5000;
+
+            port.DtrEnable = false;
+            port.RtsEnable = false;
 
             port.Open();
 
             if (!port.IsOpen)
                 throw new IOException("Не удалось открыть COM-порт.");
+
+            Thread.Sleep(700);
 
             port.DiscardInBuffer();
             port.DiscardOutBuffer();
@@ -235,7 +285,7 @@ namespace SWD
             port.Write(new[] { CmdCheck }, 0, 1);
 
             byte[] resp = new byte[1];
-            bool ok = await ReadExactAsync(port, resp, 1, AckTimeoutMs);
+            bool ok = await ReadExactAsync(port, resp, 1, 5000);
 
             if (!ok)
             {
@@ -257,7 +307,7 @@ namespace SWD
             port.Write(sizeBytes, 0, 4);
 
             byte[] resp = new byte[1];
-            bool ok = await ReadExactAsync(port, resp, 1, AckTimeoutMs);
+            bool ok = await ReadExactAsync(port, resp, 1, 20000);
 
             if (!ok)
             {
@@ -430,13 +480,13 @@ namespace SWD
             port.Write(indexBytes, 0, 4);
 
             byte[] resp = new byte[1];
-            bool ok = await ReadExactAsync(port, resp, 1, AckTimeoutMs);
+            bool ok = await ReadExactAsync(port, resp, 1, 15000);
 
             if (!ok)
                 throw new IOException("Таймаут при проверке CRC.");
 
             byte[] crcBytes = new byte[4];
-            ok = await ReadExactAsync(port, crcBytes, 4, AckTimeoutMs);
+            ok = await ReadExactAsync(port, crcBytes, 4, 15000);
 
             if (!ok)
                 throw new IOException("Не удалось прочитать CRC.");
@@ -518,6 +568,7 @@ namespace SWD
             btnFlashFromEeprom.Enabled = enabled;
             btnClearLog.Enabled = enabled;
             btnVerifyFirmware.Enabled = enabled;
+            btnFlashFileSwd.Enabled = enabled;
             btnMemoryInfo.Enabled = enabled;
 
             cbPorts.Enabled = enabled;
