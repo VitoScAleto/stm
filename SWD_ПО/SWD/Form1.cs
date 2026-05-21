@@ -22,11 +22,12 @@ namespace SWD
         private const byte CmdEepromSave = (byte)'W';
         private const byte CmdEepromCount = (byte)'N';
         private const byte CmdEepromRead = (byte)'R';
-
+        private const byte CmdEepromInfo = (byte)'I';
         private const byte RespOk = (byte)'K';
         private const byte RespErr = (byte)'E';
-
+        private const byte CmdEepromVerify = (byte)'V';
         private const byte CmdEepromDelete = (byte)'D';
+        private const byte CmdEepromActivate = (byte)'A';
         private const int EepromChunkSize = 64;
 
         public Form1()
@@ -104,12 +105,14 @@ namespace SWD
 
                 using (SerialPort port = OpenSelectedPort())
                 {
-                    await ProgramTargetAsync(port, fileData);
+                    bool ok = await SaveFirmwareToEepromAsync(port, fileData);
+                    if (!ok)
+                        throw new IOException("Не удалось сохранить прошивку в EEPROM.");
                 }
 
-                Log("Transfer complete");
-                lblStatus.Text = "Done";
-                MessageBox.Show("Передача завершена успешно.", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                Log("Save to EEPROM complete");
+                lblStatus.Text = "Saved to EEPROM";
+                MessageBox.Show("Прошивка сохранена во внешней памяти AT25.", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
@@ -288,21 +291,26 @@ namespace SWD
             Log("Send command: EEPROM_SAVE (W)");
             port.Write(new[] { CmdEepromSave }, 0, 1);
 
+            // Ждем готовности к приему размера
+            byte[] readyResp = new byte[1];
+            bool ok = await ReadExactAsync(port, readyResp, 1, 5000);
+            if (!ok || readyResp[0] != RespOk)
+            {
+                Log("EEPROM_SAVE not ready");
+                return false;
+            }
+
             byte[] lengthBytes = BitConverter.GetBytes((uint)firmware.Length);
             Log($"Send firmware length: {firmware.Length}");
             port.Write(lengthBytes, 0, 4);
 
-            byte[] resp = new byte[1];
-            bool ok = await ReadExactAsync(port, resp, 1, AckTimeoutMs);
-            if (!ok)
+            // Ждем подтверждение получения размера
+            ok = await ReadExactAsync(port, readyResp, 1, 10000);
+            if (!ok || readyResp[0] != RespOk)
             {
-                Log("EEPROM_SAVE start timeout");
+                Log("EEPROM_SAVE length not accepted");
                 return false;
             }
-
-            Log($"EEPROM_SAVE start response: 0x{resp[0]:X2} ({(char)resp[0]})");
-            if (resp[0] != RespOk)
-                return false;
 
             int totalChunks = (firmware.Length + EepromChunkSize - 1) / EepromChunkSize;
 
@@ -321,31 +329,29 @@ namespace SWD
                 Log($"EEPROM chunk {i + 1}/{totalChunks}, len={len}");
                 port.Write(chunk, 0, chunk.Length);
 
-                ok = await ReadExactAsync(port, resp, 1, AckTimeoutMs);
-                if (!ok)
+                // Ждем подтверждение каждого чанка
+                ok = await ReadExactAsync(port, readyResp, 1, 10000);
+                if (!ok || readyResp[0] != RespOk)
                 {
-                    Log("EEPROM chunk timeout");
+                    Log($"EEPROM chunk {i + 1} failed");
                     return false;
                 }
-
-                Log($"EEPROM chunk response: 0x{resp[0]:X2} ({(char)resp[0]})");
-                if (resp[0] != RespOk)
-                    return false;
 
                 progressBar.Value = i + 1;
                 lblStatus.Text = $"Saved to EEPROM: {i + 1}/{totalChunks}";
                 Application.DoEvents();
             }
 
-            ok = await ReadExactAsync(port, resp, 1, AckTimeoutMs);
-            if (!ok)
+            // Ждем финального подтверждения
+            ok = await ReadExactAsync(port, readyResp, 1, 10000);
+            if (!ok || readyResp[0] != RespOk)
             {
-                Log("EEPROM_SAVE finish timeout");
+                Log("EEPROM_SAVE final confirmation failed");
                 return false;
             }
 
-            Log($"EEPROM_SAVE finish response: 0x{resp[0]:X2} ({(char)resp[0]})");
-            return resp[0] == RespOk;
+            Log("EEPROM_SAVE completed successfully");
+            return true;
         }
 
         private async Task<int> ReadFirmwareCountAsync(SerialPort port)
@@ -414,6 +420,59 @@ namespace SWD
                 Log("Firmware list updated, count = " + count);
             }
         }
+        private async Task<bool> VerifyFirmwareAsync(SerialPort port, int index)
+        {
+            Log($"Send command: EEPROM_VERIFY (V), index={index}");
+
+            port.Write(new[] { CmdEepromVerify }, 0, 1);
+
+            byte[] indexBytes = BitConverter.GetBytes((uint)index);
+            port.Write(indexBytes, 0, 4);
+
+            byte[] resp = new byte[1];
+            bool ok = await ReadExactAsync(port, resp, 1, AckTimeoutMs);
+
+            if (!ok)
+                throw new IOException("Таймаут при проверке CRC.");
+
+            byte[] crcBytes = new byte[4];
+            ok = await ReadExactAsync(port, crcBytes, 4, AckTimeoutMs);
+
+            if (!ok)
+                throw new IOException("Не удалось прочитать CRC.");
+
+            uint crc = BitConverter.ToUInt32(crcBytes, 0);
+
+            Log($"VERIFY response: 0x{resp[0]:X2} ({(char)resp[0]}), CRC=0x{crc:X8}");
+
+            return resp[0] == RespOk;
+        }
+        private async Task<string> ReadMemoryInfoAsync(SerialPort port)
+        {
+            Log("Send command: EEPROM_INFO (I)");
+            port.Write(new[] { CmdEepromInfo }, 0, 1);
+
+            byte[] buffer = new byte[128];
+            int read = 0;
+            DateTime start = DateTime.Now;
+
+            while ((DateTime.Now - start).TotalMilliseconds < 1000)
+            {
+                try
+                {
+                    while (port.BytesToRead > 0 && read < buffer.Length)
+                        buffer[read++] = (byte)port.ReadByte();
+                }
+                catch { }
+
+                await Task.Delay(10);
+            }
+
+            string text = System.Text.Encoding.ASCII.GetString(buffer, 0, read);
+            Log(text.Trim());
+
+            return text;
+        }
 
         private static async Task<bool> ReadExactAsync(SerialPort port, byte[] buffer, int length, int timeoutMs)
         {
@@ -458,6 +517,7 @@ namespace SWD
             btnCountFirmware.Enabled = enabled;
             btnFlashFromEeprom.Enabled = enabled;
             btnClearLog.Enabled = enabled;
+            btnVerifyFirmware.Enabled = enabled;
 
             cbPorts.Enabled = enabled;
             cbFirmwareList.Enabled = enabled;
@@ -467,7 +527,34 @@ namespace SWD
         {
             tbLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {text}{Environment.NewLine}");
         }
+        private async void btnMemoryInfo_Click(object sender, EventArgs e)
+        {
+            SetUiEnabled(false);
+            lblStatus.Text = "Reading memory info...";
 
+            try
+            {
+                using (SerialPort port = OpenSelectedPort())
+                {
+                    string info = await ReadMemoryInfoAsync(port);
+
+                    lblStatus.Text = "Memory info";
+                    MessageBox.Show(info, "EEPROM Memory Info",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("ERROR: " + ex.Message);
+                lblStatus.Text = "Error";
+                MessageBox.Show(ex.Message);
+            }
+            finally
+            {
+                SetUiEnabled(true);
+            }
+        }
         private async void btnSaveToEeprom_Click(object sender, EventArgs e)
         {
             string filePath = tbFile.Text.Trim();
@@ -579,18 +666,14 @@ namespace SWD
 
                 using (SerialPort port = OpenSelectedPort())
                 {
-                    byte[] firmware = await ReadFirmwareByIndexAsync(port, index);
-
-                    port.DiscardInBuffer();
-                    port.DiscardOutBuffer();
-
-                    lblStatus.Text = "Flashing target...";
-                    await ProgramTargetAsync(port, firmware);
+                    bool ok = await ActivateFirmwareAsync(port, index);
+                    if (!ok)
+                        throw new IOException("Не удалось активировать прошивку.");
                 }
 
-                Log("Flash from EEPROM complete");
-                lblStatus.Text = "Done";
-                MessageBox.Show("Плата прошита выбранной прошивкой из EEPROM.", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                Log("Firmware activated");
+                lblStatus.Text = "Activated";
+                MessageBox.Show("Выбранная прошивка отмечена активной в EEPROM.", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
@@ -604,10 +687,79 @@ namespace SWD
             }
         }
 
+        private async void btnVerifyFirmware_Click(object sender, EventArgs e)
+        {
+            if (cbFirmwareList.Items.Count == 0)
+            {
+                MessageBox.Show("Список прошивок пуст. Сначала нажмите кнопку подсчёта прошивок.",
+                    "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (cbFirmwareList.SelectedIndex < 0)
+            {
+                MessageBox.Show("Выберите прошивку для проверки CRC.",
+                    "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            SetUiEnabled(false);
+            lblStatus.Text = "Verifying CRC...";
+
+            try
+            {
+                using (SerialPort port = OpenSelectedPort())
+                {
+                    bool ok = await VerifyFirmwareAsync(port, cbFirmwareList.SelectedIndex);
+
+                    if (!ok)
+                        throw new IOException("CRC не совпадает или прошивка повреждена.");
+                }
+
+                lblStatus.Text = "CRC OK";
+                MessageBox.Show("CRC прошивки корректный.", "CRC",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                Log("ERROR: " + ex.Message);
+                lblStatus.Text = "CRC ERROR";
+                MessageBox.Show(ex.Message, "Ошибка CRC",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                SetUiEnabled(true);
+            }
+        }
+
         private void btnClearLog_Click(object sender, EventArgs e)
         {
             tbLog.Clear();
             Log("Log cleared");
+        }
+
+
+        private async Task<bool> ActivateFirmwareAsync(SerialPort port, int index)
+        {
+            Log($"Send command: EEPROM_ACTIVATE (A), index={index}");
+
+            port.Write(new[] { CmdEepromActivate }, 0, 1);
+
+            byte[] indexBytes = BitConverter.GetBytes((uint)index);
+            port.Write(indexBytes, 0, 4);
+
+            byte[] resp = new byte[1];
+            bool ok = await ReadExactAsync(port, resp, 1, AckTimeoutMs);
+
+            if (!ok)
+            {
+                Log("ACTIVATE timeout");
+                return false;
+            }
+
+            Log($"ACTIVATE response: 0x{resp[0]:X2} ({(char)resp[0]})");
+            return resp[0] == RespOk;
         }
 
         private async Task<bool> DeleteFirmwareAsync(SerialPort port, int index)

@@ -29,15 +29,13 @@ static void SPI_CS_High(void) {
 static uint8_t SPI_TransferByte(uint8_t data) {
     volatile uint32_t timeout = 100000;
     
-    SPI1->SR = 0;
-    
     while (!(SPI1->SR & SPI_SR_TXE)) {
         if(--timeout == 0) {
             return 0xFF;
         }
     }
     
-    SPI1->DR = data;
+    *((volatile uint8_t*)&SPI1->DR) = data;
     
     timeout = 100000;
     while (!(SPI1->SR & SPI_SR_RXNE)) {
@@ -46,7 +44,7 @@ static uint8_t SPI_TransferByte(uint8_t data) {
         }
     }
     
-    return SPI1->DR;
+    return (uint8_t)SPI1->DR;
 }
 
 static void SPI1_Init(void) {

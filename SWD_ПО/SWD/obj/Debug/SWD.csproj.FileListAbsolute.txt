@@ -18,3 +18,13 @@ C:\Users\Chuma\Desktop\stm\SWD\SWD\obj\Debug\SWD.csproj.GenerateResource.cache
 C:\Users\Chuma\Desktop\stm\SWD\SWD\obj\Debug\SWD.csproj.CoreCompileInputs.cache
 C:\Users\Chuma\Desktop\stm\SWD\SWD\obj\Debug\SWD.exe
 C:\Users\Chuma\Desktop\stm\SWD\SWD\obj\Debug\SWD.pdb
+C:\Users\pushk\Desktop\SWD\Stm_SWD\SWD_ПО\SWD\bin\Debug\SWD.exe.config
+C:\Users\pushk\Desktop\SWD\Stm_SWD\SWD_ПО\SWD\bin\Debug\SWD.exe
+C:\Users\pushk\Desktop\SWD\Stm_SWD\SWD_ПО\SWD\bin\Debug\SWD.pdb
+C:\Users\pushk\Desktop\SWD\Stm_SWD\SWD_ПО\SWD\obj\Debug\SWD.csproj.AssemblyReference.cache
+C:\Users\pushk\Desktop\SWD\Stm_SWD\SWD_ПО\SWD\obj\Debug\SWD.Form1.resources
+C:\Users\pushk\Desktop\SWD\Stm_SWD\SWD_ПО\SWD\obj\Debug\SWD.Properties.Resources.resources
+C:\Users\pushk\Desktop\SWD\Stm_SWD\SWD_ПО\SWD\obj\Debug\SWD.csproj.GenerateResource.cache
+C:\Users\pushk\Desktop\SWD\Stm_SWD\SWD_ПО\SWD\obj\Debug\SWD.csproj.CoreCompileInputs.cache
+C:\Users\pushk\Desktop\SWD\Stm_SWD\SWD_ПО\SWD\obj\Debug\SWD.exe
+C:\Users\pushk\Desktop\SWD\Stm_SWD\SWD_ПО\SWD\obj\Debug\SWD.pdb

@@ -45,6 +45,8 @@
             this.btnFlashFromEeprom = new System.Windows.Forms.Button();
             this.cbFirmwareList = new System.Windows.Forms.ComboBox();
             this.buttonDeleteFromEeprom = new System.Windows.Forms.Button();
+            this.btnVerifyFirmware = new System.Windows.Forms.Button();
+
             this.SuspendLayout();
             // 
             // lblPort
@@ -199,11 +201,23 @@
             this.buttonDeleteFromEeprom.UseVisualStyleBackColor = true;
             this.buttonDeleteFromEeprom.Click += new System.EventHandler(this.buttonDeleteFromEeprom_Click);
             // 
+            // btnVerifyFirmware
+            // 
+            this.btnVerifyFirmware.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnVerifyFirmware.Location = new System.Drawing.Point(477, 311);
+            this.btnVerifyFirmware.Name = "btnVerifyFirmware";
+            this.btnVerifyFirmware.Size = new System.Drawing.Size(192, 22);
+            this.btnVerifyFirmware.TabIndex = 16;
+            this.btnVerifyFirmware.Text = "Verify CRC";
+            this.btnVerifyFirmware.UseVisualStyleBackColor = true;
+            this.btnVerifyFirmware.Click += new System.EventHandler(this.btnVerifyFirmware_Click);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(681, 429);
+            this.Controls.Add(this.btnVerifyFirmware);
             this.Controls.Add(this.buttonDeleteFromEeprom);
             this.Controls.Add(this.cbFirmwareList);
             this.Controls.Add(this.btnFlashFromEeprom);
@@ -246,6 +260,7 @@
         private System.Windows.Forms.Button btnFlashFromEeprom;
         private System.Windows.Forms.ComboBox cbFirmwareList;
         private System.Windows.Forms.Button buttonDeleteFromEeprom;
+        private System.Windows.Forms.Button btnVerifyFirmware;
     }
 }
 

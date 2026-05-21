@@ -501,60 +501,60 @@ static void flash_erase_all_needed(uint32_t base_addr, uint32_t size)
 }
 
 
-#define CMD_CHECK_TARGET     'C'
-#define CMD_START_PROGRAM    'S'
-#define CMD_END_PROGRAM      'E'
-
-#define CMD_EEPROM_SAVE      'W'
-#define CMD_EEPROM_COUNT     'N'
-#define CMD_EEPROM_LIST      'L'
-#define CMD_EEPROM_READ      'R'
-
-#define RESP_OK              'K'
-#define RESP_ERR             'E'
-#define CMD_EEPROM_DELETE    'D'
-
-
+#include "../inc/at25df321a_firmware.h"
+#include "../inc/uart_firmware_handler.h"
 #include "../inc/at25df321a.h"
+#include "../inc/stm32f1xx.h"
 #include <stdint.h>
 #include <string.h>
-int main(void) {
-    // Настройка системы на 72 MHz
+
+void UART_SendByte(uint8_t data) {
+    while(!(USART2->SR & USART_SR_TXE));
+    USART2->DR = data;
+}
+
+void UART_SendString(const char* str) {
+    while(*str) UART_SendByte((uint8_t)*str++);
+}
+
+uint8_t UART_ReceiveByte(void) {
+    while(!(USART2->SR & USART_SR_RXNE));
+    return (uint8_t)USART2->DR;
+}
+
+void SystemClock_Init(void) {
     RCC->CR |= RCC_CR_HSEON;
     while (!(RCC->CR & RCC_CR_HSERDY));
-    
-    FLASH->ACR = FLASH_ACR_LATENCY_2;
-    
+
+    FLASH->ACR = FLASH_ACR_PRFTBE | FLASH_ACR_LATENCY_2;
+
     RCC->CFGR |= RCC_CFGR_PLLSRC | RCC_CFGR_PLLMULL9;
     RCC->CR |= RCC_CR_PLLON;
     while (!(RCC->CR & RCC_CR_PLLRDY));
-    
+
     RCC->CFGR |= RCC_CFGR_SW_PLL;
     while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_PLL);
-    
-    SystemCoreClock = 72000000;
-    
-    // Инициализация USART2 для отладки
-    USART2_Init();
-    
-    TxStr2((uint8_t*)"\r\n========================================\r\n");
-    TxStr2((uint8_t*)"System Started at 72MHz\r\n");
-    TxStr2((uint8_t*)"========================================\r\n");
-    
-    // Инициализация SPI и AT25DF321A
-    AT25_Init();
-    
+}
 
+int main(void) {
+    SystemClock_Init();
+    USART2_Init();
+
+    UART_SendString("\r\n========================================\r\n");
+    UART_SendString("System Started at 72MHz\r\n");
+    UART_SendString("========================================\r\n");
+
+    AT25_Init();
     AT25_ForceUnprotect();
- 
-    
-    // Задержка для стабилизации
-    for(volatile int i = 0; i < 1000000; i++);
-    
-    // Запуск всех тестов
-    AT25_TestAll();
-    
+    UART_Firmware_Init();
+
+    UART_SendString("System ready. Waiting for commands...\r\n");
+    UART_SendString("========================================\r\n");
+
     while(1) {
-        for(volatile int i = 0; i < 1000000; i++);
+        if(USART2->SR & USART_SR_RXNE) {
+            uint8_t cmd = (uint8_t)USART2->DR;
+            UART_Firmware_ProcessCommand(cmd);
+        }
     }
 }
