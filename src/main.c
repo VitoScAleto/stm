@@ -1137,6 +1137,7 @@ static void OLED_MenuTask(void)
 int main(void)
 {
     SystemClock_Init();
+     I2C_GPIO_Init();
     USART2_Init();
 
     Buttons_Init();
