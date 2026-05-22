@@ -169,37 +169,54 @@ void CMD_EndProgram(void) {
 }
 
 void CMD_SaveToEEPROM(void) {
-    uint32_t size;
+    FirmwareTransferHeader_t transfer;
     uint32_t save_address;
     uint32_t received = 0;
     uint32_t crc;
     uint8_t buffer[EEPROM_CHUNK_SIZE];
 
-    // C# клиент после 'W' ждёт готовность. Поэтому отвечаем сразу.
+    // C# клиент после 'W' ждёт готовность.
     UART_SendResponse(RESP_OK);
 
-    if(!UART_ReceiveData((uint8_t*)&size, 4, 1000) || size == 0) {
+    // Теперь принимаем не только размер, а весь заголовок:
+    // size + version + name[32] + crc32
+    if(!UART_ReceiveData((uint8_t*)&transfer,
+                         sizeof(FirmwareTransferHeader_t),
+                         3000) ||
+       transfer.firmware_size == 0) {
         UART_SendResponse(RESP_ERR);
         return;
     }
 
-    if(!FindFreeAddress(size, &save_address)) {
+    transfer.firmware_name[31] = '\0';
+
+    if(transfer.firmware_version == 0) {
+        transfer.firmware_version = DEFAULT_FIRMWARE_VERSION;
+    }
+
+    if(!FindFreeAddress(transfer.firmware_size, &save_address)) {
         UART_SendResponse(RESP_ERR);
         return;
     }
 
-    if(!Firmware_BeginSave(save_address, size, DEFAULT_FIRMWARE_VERSION, "Firmware")) {
+    if(!Firmware_BeginSave(save_address,
+                           transfer.firmware_size,
+                           transfer.firmware_version,
+                           transfer.firmware_name)) {
         UART_SendResponse(RESP_ERR);
         return;
     }
 
-    // размер принят, память найдена и стёрта
+    // заголовок принят, память найдена и стёрта
     UART_SendResponse(RESP_OK);
 
     crc = CRC32_InitValue();
 
-    while(received < size) {
-        uint32_t chunk_size = (size - received) > EEPROM_CHUNK_SIZE ? EEPROM_CHUNK_SIZE : (size - received);
+    while(received < transfer.firmware_size) {
+        uint32_t chunk_size =
+            (transfer.firmware_size - received) > EEPROM_CHUNK_SIZE
+            ? EEPROM_CHUNK_SIZE
+            : (transfer.firmware_size - received);
 
         if(!UART_ReceiveData(buffer, chunk_size, 5000)) {
             UART_SendResponse(RESP_ERR);
@@ -217,7 +234,15 @@ void CMD_SaveToEEPROM(void) {
         UART_SendResponse(RESP_OK);
     }
 
-    if(Firmware_FinishSave(save_address, CRC32_Final(crc))) {
+    uint32_t final_crc = CRC32_Final(crc);
+
+    // Можно сравнить с CRC от ПК, если он его передаёт
+    if(transfer.crc32 != 0 && transfer.crc32 != final_crc) {
+        UART_SendResponse(RESP_ERR);
+        return;
+    }
+
+    if(Firmware_FinishSave(save_address, final_crc)) {
         UART_SendResponse(RESP_OK);
     } else {
         UART_SendResponse(RESP_ERR);

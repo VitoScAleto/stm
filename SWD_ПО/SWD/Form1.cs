@@ -4,6 +4,7 @@ using System.IO.Ports;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text;
 using System.Windows.Forms;
 
 namespace SWD
@@ -18,7 +19,7 @@ namespace SWD
         private const byte CmdCheck = (byte)'C';
         private const byte CmdStart = (byte)'S';
         private const byte CmdEnd = (byte)'E';
-
+        private const byte CmdEepromList = (byte)'L';
         private const byte CmdEepromSave = (byte)'W';
         private const byte CmdEepromCount = (byte)'N';
         private const byte CmdEepromRead = (byte)'R';
@@ -30,6 +31,7 @@ namespace SWD
         private const byte CmdEepromActivate = (byte)'A';
         private const byte CmdEepromFlashToTarget = (byte)'F';
         private const int EepromChunkSize = 64;
+        private const int FirmwareNameMaxLength = 31;
 
         public Form1()
         {
@@ -77,7 +79,15 @@ namespace SWD
             if (openFileDialog1.ShowDialog() == DialogResult.OK)
             {
                 tbFile.Text = openFileDialog1.FileName;
+
+                string defaultName = Path.GetFileNameWithoutExtension(tbFile.Text);
+                if (defaultName.Length > FirmwareNameMaxLength)
+                    defaultName = defaultName.Substring(0, FirmwareNameMaxLength);
+
+                tbFirmwareName.Text = defaultName;
+
                 Log("Selected file: " + tbFile.Text);
+                Log("Firmware name: " + tbFirmwareName.Text);
             }
         }
 
@@ -150,10 +160,12 @@ namespace SWD
 
                 using (SerialPort port = OpenSelectedPort())
                 {
-                    bool ok = await SaveFirmwareToEepromAsync(port, fileData);
+                    bool ok = await SaveFirmwareToEepromAsync(port, fileData, filePath);
                     if (!ok)
                         throw new IOException("Не удалось сохранить прошивку в EEPROM.");
                 }
+
+                await RefreshFirmwareListAsync();
 
                 Log("Save to EEPROM complete");
                 lblStatus.Text = "Saved to EEPROM";
@@ -328,7 +340,7 @@ namespace SWD
                 Log("END timeout");
         }
 
-        private async Task<bool> SaveFirmwareToEepromAsync(SerialPort port, byte[] firmware)
+        private async Task<bool> SaveFirmwareToEepromAsync(SerialPort port, byte[] firmware, string filePath)
         {
             if (firmware == null || firmware.Length == 0)
                 throw new IOException("Файл пустой.");
@@ -345,15 +357,18 @@ namespace SWD
                 return false;
             }
 
-            byte[] lengthBytes = BitConverter.GetBytes((uint)firmware.Length);
-            Log($"Send firmware length: {firmware.Length}");
-            port.Write(lengthBytes, 0, 4);
+            string firmwareName = GetFirmwareNameOrThrow(filePath);
+            uint firmwareCrc = CalculateCrc32(firmware);
+            byte[] headerBytes = BuildFirmwareTransferHeader(firmware.Length, 1, firmwareName, firmwareCrc);
 
-            // Ждем подтверждение получения размера
+            Log($"Send firmware header: size={firmware.Length}, version=1, name='{firmwareName}', crc=0x{firmwareCrc:X8}");
+            port.Write(headerBytes, 0, headerBytes.Length);
+
+            // Ждем подтверждение получения заголовка
             ok = await ReadExactAsync(port, readyResp, 1, 10000);
             if (!ok || readyResp[0] != RespOk)
             {
-                Log("EEPROM_SAVE length not accepted");
+                Log("EEPROM_SAVE header not accepted");
                 return false;
             }
 
@@ -452,18 +467,88 @@ namespace SWD
         {
             using (SerialPort port = OpenSelectedPort())
             {
-                int count = await ReadFirmwareCountAsync(port);
-
-                cbFirmwareList.Items.Clear();
-
-                for (int i = 0; i < count; i++)
-                    cbFirmwareList.Items.Add("Прошивка " + (i + 1));
-
-                if (count > 0)
-                    cbFirmwareList.SelectedIndex = 0;
-
-                Log("Firmware list updated, count = " + count);
+                await ReadFirmwareListWithNamesAsync(port, 0);
             }
+        }
+
+        private async Task<int> ReadFirmwareListWithNamesAsync(SerialPort port, int preferredIndex)
+        {
+            Log("Send command: EEPROM_LIST (L)");
+            port.DiscardInBuffer();
+            port.Write(new[] { CmdEepromList }, 0, 1);
+
+            byte[] buffer = new byte[2048];
+            int read = 0;
+            DateTime start = DateTime.Now;
+            int quietMs = 0;
+
+            while ((DateTime.Now - start).TotalMilliseconds < 2500 && read < buffer.Length)
+            {
+                int before = read;
+
+                try
+                {
+                    while (port.BytesToRead > 0 && read < buffer.Length)
+                        buffer[read++] = (byte)port.ReadByte();
+                }
+                catch { }
+
+                if (read > before)
+                    quietMs = 0;
+                else
+                    quietMs += 20;
+
+                if (read > 0 && quietMs >= 200)
+                    break;
+
+                await Task.Delay(20);
+            }
+
+            string text = Encoding.ASCII.GetString(buffer, 0, read);
+            if (!string.IsNullOrWhiteSpace(text))
+                Log(text.Trim());
+
+            cbFirmwareList.Items.Clear();
+            string[] lines = text.Split(
+                new[] { "\r\n", "\n" },
+                StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (string rawLine in lines)
+            {
+                string line = rawLine.Trim();
+                if (line.Length == 0)
+                    continue;
+
+                string item = ParseFirmwareListLine(line);
+                if (!string.IsNullOrWhiteSpace(item))
+                    cbFirmwareList.Items.Add(item);
+            }
+
+            int count = cbFirmwareList.Items.Count;
+
+            if (count > 0)
+            {
+                if (preferredIndex < 0)
+                    preferredIndex = 0;
+                if (preferredIndex >= count)
+                    preferredIndex = count - 1;
+
+                cbFirmwareList.SelectedIndex = preferredIndex;
+            }
+
+            Log("Firmware list updated, count = " + count);
+            return count;
+        }
+
+        private static string ParseFirmwareListLine(string line)
+        {
+            // STM32 sends lines like:
+            // Firmware #1: MyFirmware v1 (4096 bytes)
+            int colon = line.IndexOf(':');
+            if (colon >= 0 && colon + 1 < line.Length)
+                return line.Substring(colon + 1).Trim();
+
+            return line.Trim();
         }
         private async Task<bool> VerifyFirmwareAsync(SerialPort port, int index)
         {
@@ -596,6 +681,67 @@ namespace SWD
             return resp[0] == RespOk;
         }
 
+        private string GetFirmwareNameOrThrow(string filePath)
+        {
+            string name = tbFirmwareName.Text.Trim();
+
+            if (string.IsNullOrWhiteSpace(name))
+                name = Path.GetFileNameWithoutExtension(filePath);
+
+            if (string.IsNullOrWhiteSpace(name))
+                throw new IOException("Введите имя прошивки.");
+
+            if (name.Length > FirmwareNameMaxLength)
+                throw new IOException($"Имя прошивки слишком длинное. Максимум {FirmwareNameMaxLength} символ.");
+
+            foreach (char ch in name)
+            {
+                if (ch < 32 || ch > 126)
+                    throw new IOException("Имя прошивки должно содержать только ASCII символы: латиница, цифры, _, -, точка.");
+            }
+
+            return name;
+        }
+
+        private static byte[] BuildFirmwareTransferHeader(int firmwareSize, uint version, string firmwareName, uint crc32)
+        {
+            byte[] header = new byte[44];
+
+            Array.Copy(BitConverter.GetBytes((uint)firmwareSize), 0, header, 0, 4);
+            Array.Copy(BitConverter.GetBytes(version), 0, header, 4, 4);
+
+            byte[] nameBytes = Encoding.ASCII.GetBytes(firmwareName);
+            if (nameBytes.Length > FirmwareNameMaxLength)
+                throw new IOException($"Имя прошивки слишком длинное. Максимум {FirmwareNameMaxLength} байт.");
+
+            Array.Copy(nameBytes, 0, header, 8, nameBytes.Length);
+
+            // header[8 + nameBytes.Length] остается 0, это C-строка с \\0
+            Array.Copy(BitConverter.GetBytes(crc32), 0, header, 40, 4);
+
+            return header;
+        }
+
+        private static uint CalculateCrc32(byte[] data)
+        {
+            uint crc = 0xFFFFFFFFu;
+
+            for (int i = 0; i < data.Length; i++)
+            {
+                crc ^= data[i];
+
+                for (int j = 0; j < 8; j++)
+                {
+                    if ((crc & 1u) != 0)
+                        crc = (crc >> 1) ^ 0xEDB88320u;
+                    else
+                        crc >>= 1;
+                }
+            }
+
+            return ~crc;
+        }
+
         private static async Task<bool> ReadExactAsync(SerialPort port, byte[] buffer, int length, int timeoutMs)
         {
             return await Task.Run(() =>
@@ -645,6 +791,7 @@ namespace SWD
 
             cbPorts.Enabled = enabled;
             cbFirmwareList.Enabled = enabled;
+            tbFirmwareName.Enabled = enabled;
         }
 
         private void Log(string text)
@@ -702,7 +849,7 @@ namespace SWD
 
                 using (SerialPort port = OpenSelectedPort())
                 {
-                    bool ok = await SaveFirmwareToEepromAsync(port, firmware);
+                    bool ok = await SaveFirmwareToEepromAsync(port, firmware, filePath);
 
                     if (!ok)
                         throw new IOException("Не удалось сохранить прошивку в EEPROM.");
@@ -710,14 +857,7 @@ namespace SWD
 
                 using (SerialPort port = OpenSelectedPort())
                 {
-                    int count = await ReadFirmwareCountAsync(port);
-
-                    cbFirmwareList.Items.Clear();
-                    for (int i = 0; i < count; i++)
-                        cbFirmwareList.Items.Add("Прошивка " + (i + 1));
-
-                    if (count > 0)
-                        cbFirmwareList.SelectedIndex = count - 1;
+                    await ReadFirmwareListWithNamesAsync(port, int.MaxValue);
                 }
 
                 lblStatus.Text = "Saved to EEPROM";
@@ -742,20 +882,15 @@ namespace SWD
 
             try
             {
+                int count;
                 using (SerialPort port = OpenSelectedPort())
                 {
-                    int count = await ReadFirmwareCountAsync(port);
-
-                    cbFirmwareList.Items.Clear();
-                    for (int i = 0; i < count; i++)
-                        cbFirmwareList.Items.Add("Прошивка " + (i + 1));
-
-                    if (count > 0)
-                        cbFirmwareList.SelectedIndex = 0;
-
-                    lblStatus.Text = $"Firmware count: {count}";
-                    MessageBox.Show("Количество прошивок в EEPROM: " + count, "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    count = await ReadFirmwareListWithNamesAsync(port, 0);
                 }
+
+                lblStatus.Text = $"Firmware count: {count}";
+                MessageBox.Show("Количество прошивок в EEPROM: " + count,
+                    "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {

@@ -48,6 +48,8 @@
             this.btnVerifyFirmware = new System.Windows.Forms.Button();
             this.btnMemoryInfo = new System.Windows.Forms.Button();
             this.btnFlashFileSwd = new System.Windows.Forms.Button();
+            this.lblFirmwareName = new System.Windows.Forms.Label();
+            this.tbFirmwareName = new System.Windows.Forms.TextBox();
 
             this.SuspendLayout();
             // 
@@ -105,9 +107,28 @@
             this.btnBrowse.Text = "Browse";
             this.btnBrowse.UseVisualStyleBackColor = true;
             // 
+            // lblFirmwareName
+            // 
+            this.lblFirmwareName.AutoSize = true;
+            this.lblFirmwareName.Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(204)));
+            this.lblFirmwareName.Location = new System.Drawing.Point(270, 244);
+            this.lblFirmwareName.Name = "lblFirmwareName";
+            this.lblFirmwareName.Size = new System.Drawing.Size(94, 15);
+            this.lblFirmwareName.TabIndex = 19;
+            this.lblFirmwareName.Text = "Firmware name:";
+            // 
+            // tbFirmwareName
+            // 
+            this.tbFirmwareName.Location = new System.Drawing.Point(273, 264);
+            this.tbFirmwareName.MaxLength = 31;
+            this.tbFirmwareName.Name = "tbFirmwareName";
+            this.tbFirmwareName.Size = new System.Drawing.Size(192, 20);
+            this.tbFirmwareName.TabIndex = 20;
+            // 
+            // 
             // btnStart
             // 
-            this.btnStart.Location = new System.Drawing.Point(273, 277);
+            this.btnStart.Location = new System.Drawing.Point(273, 305);
             this.btnStart.Name = "btnStart";
             this.btnStart.Size = new System.Drawing.Size(192, 28);
             this.btnStart.TabIndex = 6;
@@ -116,7 +137,7 @@
             // 
             // progressBar
             // 
-            this.progressBar.Location = new System.Drawing.Point(273, 311);
+            this.progressBar.Location = new System.Drawing.Point(273, 339);
             this.progressBar.Name = "progressBar";
             this.progressBar.Size = new System.Drawing.Size(192, 21);
             this.progressBar.TabIndex = 7;
@@ -124,7 +145,7 @@
             // lblStatus
             // 
             this.lblStatus.AutoSize = true;
-            this.lblStatus.Location = new System.Drawing.Point(278, 346);
+            this.lblStatus.Location = new System.Drawing.Point(278, 374);
             this.lblStatus.Name = "lblStatus";
             this.lblStatus.Size = new System.Drawing.Size(34, 13);
             this.lblStatus.TabIndex = 8;
@@ -241,6 +262,8 @@
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(681, 429);
+            this.Controls.Add(this.tbFirmwareName);
+            this.Controls.Add(this.lblFirmwareName);
             this.Controls.Add(this.btnFlashFileSwd);
             this.Controls.Add(this.btnMemoryInfo);
             this.Controls.Add(this.btnVerifyFirmware);
@@ -289,6 +312,8 @@
         private System.Windows.Forms.Button btnVerifyFirmware;
         private System.Windows.Forms.Button btnMemoryInfo;
         private System.Windows.Forms.Button btnFlashFileSwd;
+        private System.Windows.Forms.Label lblFirmwareName;
+        private System.Windows.Forms.TextBox tbFirmwareName;
     }
 }
 
