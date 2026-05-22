@@ -746,8 +746,8 @@ void SystemClock_Init(void) {
 
 #define BTN_UP_PIN      10
 #define BTN_DOWN_PIN    11
-#define BTN_OK_PIN      8
-#define BTN_BACK_PIN    9
+#define BTN_OK_PIN      12
+#define BTN_BACK_PIN    13
 
 #define BTN_UP_MASK     (1u << BTN_UP_PIN)
 #define BTN_DOWN_MASK   (1u << BTN_DOWN_PIN)
@@ -777,14 +777,14 @@ static void Buttons_Init(void)
 {
     RCC->APB2ENR |= RCC_APB2ENR_IOPBEN;
 
-    // PB8 input pull-up
-    GPIOB->CRH &= ~(GPIO_CRH_MODE8 | GPIO_CRH_CNF8);
-    GPIOB->CRH |= GPIO_CRH_CNF8_1;
+    // PB12 input pull-up
+    GPIOB->CRH &= ~(GPIO_CRH_MODE12 | GPIO_CRH_CNF12);
+    GPIOB->CRH |= GPIO_CRH_CNF12_1;
     GPIOB->ODR |= BTN_OK_MASK;
 
-    // PB9 input pull-up
-    GPIOB->CRH &= ~(GPIO_CRH_MODE9 | GPIO_CRH_CNF9);
-    GPIOB->CRH |= GPIO_CRH_CNF9_1;
+    // PB13 input pull-up
+    GPIOB->CRH &= ~(GPIO_CRH_MODE13 | GPIO_CRH_CNF13);
+    GPIOB->CRH |= GPIO_CRH_CNF13_1;
     GPIOB->ODR |= BTN_BACK_MASK;
 
     // PB10 input pull-up
