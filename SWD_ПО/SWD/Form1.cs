@@ -46,7 +46,6 @@ namespace SWD
             btnBrowse.Click += btnBrowse_Click;
             btnStart.Click += btnStart_Click;
 
-            //btnSaveToEeprom.Click += btnSaveToEeprom_Click;
             //btnCountFirmware.Click += btnCountFirmware_Click;
             //btnFlashFromEeprom.Click += btnFlashFromEeprom_Click;
             //btnClearLog.Click += btnClearLog_Click;
@@ -216,6 +215,7 @@ namespace SWD
 
             progressBar.Minimum = 0;
             progressBar.Maximum = totalChunks;
+            progressBar.Value = 0;
 
             Log("File size: " + fileData.Length + " bytes");
             Log("Chunks: " + totalChunks);
@@ -254,10 +254,6 @@ namespace SWD
 
                 for (int attempt = 1; attempt <= MaxRetries; attempt++)
                 {
-                    port.DiscardInBuffer();
-
-                    Log($"Send block {chunkIndex + 1}/{totalChunks}, try {attempt}: {BitConverter.ToString(chunk)}");
-
                     port.Write(chunk, 0, chunk.Length);
 
                     byte[] echo = new byte[4];
@@ -265,14 +261,8 @@ namespace SWD
 
                     if (ok)
                     {
-                        uint value = BitConverter.ToUInt32(echo, 0);
-                        Log($"Response: 0x{value:X8}");
                         sent = true;
                         break;
-                    }
-                    else
-                    {
-                        Log("Timeout");
                     }
                 }
 
@@ -281,7 +271,12 @@ namespace SWD
 
                 progressBar.Value = chunkIndex + 1;
                 lblStatus.Text = $"Sent: {chunkIndex + 1}/{totalChunks}";
-                Application.DoEvents();
+
+                if ((chunkIndex + 1) % 100 == 0 || chunkIndex + 1 == totalChunks)
+                {
+                    Log($"Sent block {chunkIndex + 1}/{totalChunks}");
+                    Application.DoEvents();
+                }
             }
 
             await EndProgrammingAsync(port);
@@ -782,7 +777,6 @@ namespace SWD
             btnStart.Enabled = enabled;
             btnBrowse.Enabled = enabled;
             btnRefreshPorts.Enabled = enabled;
-            btnSaveToEeprom.Enabled = enabled;
             btnCountFirmware.Enabled = enabled;
             btnFlashFromEeprom.Enabled = enabled;
             btnClearLog.Enabled = enabled;
