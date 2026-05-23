@@ -132,7 +132,7 @@
             this.btnStart.Name = "btnStart";
             this.btnStart.Size = new System.Drawing.Size(192, 28);
             this.btnStart.TabIndex = 6;
-            this.btnStart.Text = "Start";
+            this.btnStart.Text = "Save .bin in AT25";
             this.btnStart.UseVisualStyleBackColor = true;
             // 
             // progressBar
@@ -176,22 +176,14 @@
             this.btnClearLog.Click += new System.EventHandler(this.btnClearLog_Click);
             // 
             // btnSaveToEeprom
-            // 
-            this.btnSaveToEeprom.Location = new System.Drawing.Point(477, 131);
-            this.btnSaveToEeprom.Name = "btnSaveToEeprom";
-            this.btnSaveToEeprom.Size = new System.Drawing.Size(192, 22);
-            this.btnSaveToEeprom.TabIndex = 11;
-            this.btnSaveToEeprom.Text = "Save .bin in EEPROM";
-            this.btnSaveToEeprom.UseVisualStyleBackColor = true;
-            this.btnSaveToEeprom.Click += new System.EventHandler(this.btnSaveToEeprom_Click);
-            // 
+           
             // btnCountFirmware
             // 
             this.btnCountFirmware.Location = new System.Drawing.Point(477, 159);
             this.btnCountFirmware.Name = "btnCountFirmware";
             this.btnCountFirmware.Size = new System.Drawing.Size(192, 22);
             this.btnCountFirmware.TabIndex = 12;
-            this.btnCountFirmware.Text = "Count proshivok in EEPROM";
+            this.btnCountFirmware.Text = "Update firmware";
             this.btnCountFirmware.UseVisualStyleBackColor = true;
             this.btnCountFirmware.Click += new System.EventHandler(this.btnCountFirmware_Click);
             // 

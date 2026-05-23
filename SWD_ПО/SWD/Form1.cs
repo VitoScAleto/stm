@@ -152,7 +152,7 @@ namespace SWD
 
             SetUiEnabled(false);
             progressBar.Value = 0;
-            lblStatus.Text = "Transfer...";
+            lblStatus.Text = "Saving to AT25...";
 
             try
             {
@@ -162,14 +162,15 @@ namespace SWD
                 {
                     bool ok = await SaveFirmwareToEepromAsync(port, fileData, filePath);
                     if (!ok)
-                        throw new IOException("Не удалось сохранить прошивку в EEPROM.");
+                        throw new IOException("Не удалось сохранить прошивку в AT25.");
                 }
 
                 await RefreshFirmwareListAsync();
 
-                Log("Save to EEPROM complete");
-                lblStatus.Text = "Saved to EEPROM";
-                MessageBox.Show("Прошивка сохранена во внешней памяти AT25.", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                Log("Save to AT25 complete");
+                lblStatus.Text = "Saved to AT25";
+                MessageBox.Show("Прошивка сохранена во внешней памяти AT25.", "Успех",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {

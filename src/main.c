@@ -1148,18 +1148,11 @@ int main(void)
     OLED_DrawString(0, 16, "Starting...", 1);
     OLED_Update();
 
-    UART_SendString("\r\n========================================\r\n");
-    UART_SendString("System Started at 72MHz\r\n");
-    UART_SendString("========================================\r\n");
-
     AT25_Init();
     AT25_ForceUnprotect();
+    
     UART_Firmware_Init();
-
     OLED_ShowMainMenu();
-
-    UART_SendString("System ready. Waiting for commands...\r\n");
-    UART_SendString("========================================\r\n");
 
     while(1)
     {
