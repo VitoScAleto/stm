@@ -30,6 +30,7 @@ typedef struct {
     uint32_t crc32;            // CRC32 для проверки
 } FirmwareTransferHeader_t;
 
+void USART2_Init(void);
 // Инициализация обработчика
 void UART_Firmware_Init(void);
 
@@ -60,4 +61,23 @@ void CMD_ActivateFirmware(void);
 void CMD_GetMemoryInfo(void);
 void CMD_VerifyFirmware(void);
 void CMD_FormatMemory(void);
+
+void UART_SendU32(uint32_t value);
+
+int UART_ReceiveExactLocal(uint8_t *buffer, uint32_t length, uint32_t timeout_loops);
+
+void CMD_DirectSwdCheckTarget(void);
+
+void CMD_DirectSwdProgramFile(void);
+
+void CMD_DirectSwdEndProgram(void);
+
+void CMD_FlashFirmwareFromAT25(void);
+
+void UART_SendByte(uint8_t data);
+
+void UART_SendString(const char* str);
+
+uint8_t UART_ReceiveByte(void);
+
 #endif // UART_FIRMWARE_HANDLER_H

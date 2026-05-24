@@ -9,7 +9,6 @@ extern void UART_SendByte(uint8_t data);
 extern void UART_SendString(const char* str);
 extern uint8_t UART_ReceiveByte(void);
 
-// Эти 3 функции добавлены в исправленный at25df321a_firmware.c.
 extern bool Firmware_BeginSave(uint32_t address, uint32_t size, uint32_t version, const char* name);
 extern bool Firmware_WriteChunk(uint32_t address, uint32_t offset, const uint8_t* data, uint32_t length);
 extern bool Firmware_FinishSave(uint32_t address, uint32_t crc32);
@@ -21,7 +20,46 @@ extern bool Firmware_FinishSave(uint32_t address, uint32_t crc32);
 static uint32_t crc32_table[256];
 static bool crc32_initialized = false;
 
-static void InitCRC32Table(void) {
+inline void delay_us(uint32_t us);
+
+ inline void delay_us(uint32_t us)
+{
+    uint32_t cycles = us * (SystemCoreClock / 1000000u);
+    uint32_t start = DWT->CYCCNT;
+
+    while ((DWT->CYCCNT - start) < cycles) {
+    }
+}
+
+/*PA2 (TX2) и PA3 (RX2)*/
+void USART2_Init(void)
+{
+    // 1. Включаем тактирование GPIOA и USART2
+    RCC->APB2ENR |= RCC_APB2ENR_IOPAEN;
+    RCC->APB1ENR |= RCC_APB1ENR_USART2EN;
+
+    // 2. Настройка PA2 (TX) как Alternate Function Push-Pull
+    GPIOA->CRL &= ~(GPIO_CRL_MODE2 | GPIO_CRL_CNF2);
+    GPIOA->CRL |= GPIO_CRL_MODE2_1 | GPIO_CRL_MODE2_0; // Output 50 MHz
+    GPIOA->CRL |= GPIO_CRL_CNF2_1;                     // AF Push-Pull
+
+    // 3. Настройка PA3 (RX) как вход (Floating input)
+    GPIOA->CRL &= ~(GPIO_CRL_MODE3 | GPIO_CRL_CNF3);
+    GPIOA->CRL |= GPIO_CRL_CNF3_0; // Floating input
+
+    // 4. Настройка скорости (baudrate)
+    // 72 MHz / 16 / 115200 ≈ 39.0625
+    USART2->BRR = 72000000 / 115200;
+
+    // 5. Включаем USART
+    USART2->CR1 =
+        USART_CR1_TE |   // передача
+        USART_CR1_RE |   // приём
+        USART_CR1_UE ; 
+   
+}
+
+void InitCRC32Table(void) {
     if(crc32_initialized) return;
 
     for(uint32_t i = 0; i < 256; i++) {
@@ -34,19 +72,19 @@ static void InitCRC32Table(void) {
     crc32_initialized = true;
 }
 
-static uint32_t CRC32_InitValue(void) {
+uint32_t CRC32_InitValue(void) {
     InitCRC32Table();
     return 0xFFFFFFFFu;
 }
 
-static uint32_t CRC32_Update(uint32_t crc, const uint8_t* data, uint32_t length) {
+uint32_t CRC32_Update(uint32_t crc, const uint8_t* data, uint32_t length) {
     for(uint32_t i = 0; i < length; i++) {
         crc = (crc >> 8) ^ crc32_table[(crc ^ data[i]) & 0xFFu];
     }
     return crc;
 }
 
-static uint32_t CRC32_Final(uint32_t crc) {
+uint32_t CRC32_Final(uint32_t crc) {
     return ~crc;
 }
 
@@ -353,4 +391,202 @@ void CMD_GetMemoryInfo(void) {
     UART_SendString("Total: "); UART_SendNumber(total); UART_SendString(" bytes\r\n");
     UART_SendString("Used: ");  UART_SendNumber(used);  UART_SendString(" bytes\r\n");
     UART_SendString("Free: ");  UART_SendNumber(free_space); UART_SendString(" bytes\r\n");
+}
+
+
+void UART_SendU32(uint32_t value)
+{
+    UART_SendByte((uint8_t)(value & 0xFFu));
+    UART_SendByte((uint8_t)((value >> 8) & 0xFFu));
+    UART_SendByte((uint8_t)((value >> 16) & 0xFFu));
+    UART_SendByte((uint8_t)((value >> 24) & 0xFFu));
+}
+
+int UART_ReceiveExactLocal(uint8_t *buffer, uint32_t length, uint32_t timeout_loops)
+{
+    uint32_t received = 0;
+    uint32_t timeout = timeout_loops;
+
+    while (received < length) {
+        if (USART2->SR & USART_SR_RXNE) {
+            buffer[received++] = (uint8_t)USART2->DR;
+            timeout = timeout_loops;
+        } else {
+            if (timeout-- == 0u) {
+                return 0;
+            }
+        }
+    }
+
+    return 1;
+}
+
+void CMD_DirectSwdCheckTarget(void)
+{
+    swd_gpio_init();
+    dwt_init();
+
+    NRST_LOW();
+    delay_us(5000);
+    NRST_HIGH();
+    delay_us(50000);
+
+    if (swd_init_debug() && check_target()) {
+        UART_SendByte(RESP_OK);
+    } else {
+        UART_SendByte(RESP_ERR);
+    }
+}
+
+void CMD_DirectSwdProgramFile(void)
+{
+    uint8_t size_bytes[4];
+
+    if (!UART_ReceiveExactLocal(size_bytes, 4, 3000000u)) {
+        UART_SendByte(RESP_ERR);
+        return;
+    }
+
+    uint32_t total_words = ((uint32_t)size_bytes[0]) |
+                           ((uint32_t)size_bytes[1] << 8) |
+                           ((uint32_t)size_bytes[2] << 16) |
+                           ((uint32_t)size_bytes[3] << 24);
+
+    if (total_words == 0u) {
+        UART_SendByte(RESP_ERR);
+        return;
+    }
+
+    uint32_t firmware_size = total_words * 4u;
+
+    if (!swd_prepare_target_for_program(firmware_size)) {
+        UART_SendByte(RESP_ERR);
+        return;
+    }
+
+    UART_SendByte(RESP_OK);
+
+    for (uint32_t i = 0; i < total_words; i++) {
+        uint8_t word_bytes[4];
+
+        if (!UART_ReceiveExactLocal(word_bytes, 4, 3000000u)) {
+            flash_lock_target();
+            UART_SendByte(RESP_ERR);
+            return;
+        }
+
+        uint32_t word = ((uint32_t)word_bytes[0]) |
+                        ((uint32_t)word_bytes[1] << 8) |
+                        ((uint32_t)word_bytes[2] << 16) |
+                        ((uint32_t)word_bytes[3] << 24);
+
+        if (!flash_program_word32(FLASH_BASE_ADDR + i * 4u, word)) {
+            flash_lock_target();
+            UART_SendByte(RESP_ERR);
+            return;
+        }
+
+        UART_SendU32(word);
+    }
+
+    flash_lock_target();
+}
+
+void CMD_DirectSwdEndProgram(void)
+{
+    UART_SendByte(RESP_OK);
+}
+
+
+void CMD_FlashFirmwareFromAT25(void)
+{
+    uint8_t index_bytes[4];
+
+    if (!UART_ReceiveExactLocal(index_bytes, 4, 3000000u)) {
+        UART_SendByte(RESP_ERR);
+        return;
+    }
+
+    uint32_t index = ((uint32_t)index_bytes[0]) |
+                     ((uint32_t)index_bytes[1] << 8) |
+                     ((uint32_t)index_bytes[2] << 16) |
+                     ((uint32_t)index_bytes[3] << 24);
+
+    FirmwareHeader_t headers[MAX_FIRMWARE_COUNT];
+    uint32_t addresses[MAX_FIRMWARE_COUNT];
+
+    uint32_t count = Firmware_GetList(headers, addresses, MAX_FIRMWARE_COUNT);
+
+    if (index >= count) {
+        UART_SendByte(RESP_ERR);
+        return;
+    }
+
+    uint32_t firmware_size = headers[index].size;
+    uint32_t firmware_addr = addresses[index] + FIRMWARE_HEADER_SIZE;
+
+    if (firmware_size == 0u) {
+        UART_SendByte(RESP_ERR);
+        return;
+    }
+
+    uint32_t program_size = (firmware_size + 3u) & ~3u;
+
+    if (!swd_prepare_target_for_program(program_size)) {
+        UART_SendByte(RESP_ERR);
+        return;
+    }
+
+    UART_SendByte(RESP_OK);
+    UART_SendU32(firmware_size);
+
+    uint8_t buffer[64];
+    uint32_t offset = 0;
+
+    while (offset < firmware_size) {
+        uint32_t chunk = firmware_size - offset;
+        if (chunk > sizeof(buffer)) {
+            chunk = sizeof(buffer);
+        }
+
+        memset(buffer, 0xFF, sizeof(buffer));
+        AT25_ReadData(firmware_addr + offset, buffer, chunk);
+
+        uint32_t chunk_program_size = (chunk + 3u) & ~3u;
+
+        for (uint32_t i = 0; i < chunk_program_size; i += 4u) {
+            uint32_t word = ((uint32_t)buffer[i]) |
+                            ((uint32_t)buffer[i + 1u] << 8) |
+                            ((uint32_t)buffer[i + 2u] << 16) |
+                            ((uint32_t)buffer[i + 3u] << 24);
+
+            if (!flash_program_word32(FLASH_BASE_ADDR + offset + i, word)) {
+                flash_lock_target();
+                UART_SendByte(RESP_ERR);
+                return;
+            }
+        }
+
+        offset += chunk;
+        UART_SendByte(RESP_OK);
+    }
+
+    flash_lock_target();
+    UART_SendByte(RESP_OK);
+}
+
+
+
+void UART_SendByte(uint8_t data) {
+    while(!(USART2->SR & USART_SR_TXE));
+    USART2->DR = data;
+}
+
+void UART_SendString(const char* str) {
+    while(*str) UART_SendByte((uint8_t)*str++);
+}
+
+uint8_t UART_ReceiveByte(void) {
+    while(!(USART2->SR & USART_SR_RXNE));
+    return (uint8_t)USART2->DR;
 }

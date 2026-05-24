@@ -1,4 +1,4 @@
-#include "../inc/oled.h"
+#include "../inc/oled_driver.h"
 
 // Буфер для дисплея
 uint8_t displayBuffer[OLED_PAGES][OLED_WIDTH];

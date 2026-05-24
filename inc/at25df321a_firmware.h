@@ -3,7 +3,10 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-
+#include "oled_driver.h"
+#include "oled_ui.h"
+#include <stdio.h>
+#include "uart_firmware_handler.h"
 // Адресное пространство для хранения прошивок
 #define FIRMWARE_START_ADDRESS     0x00000000
 #define FIRMWARE_HEADER_SIZE       64           // Размер заголовка прошивки
@@ -80,5 +83,9 @@ uint32_t Firmware_GetFreeSpace(void);
 
 // Получение информации о памяти
 void Firmware_GetMemoryInfo(uint32_t* total, uint32_t* used, uint32_t* free);
+
+int FlashFirmwareFromAT25_Index(uint32_t index, uint8_t use_oled);
+
+int swd_prepare_target_for_program(uint32_t firmware_size);
 
 #endif // AT25DF321A_FIRMWARE_H

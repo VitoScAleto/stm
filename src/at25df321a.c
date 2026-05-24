@@ -1,4 +1,4 @@
-#include "../inc/swd.h"
+
 #include "at25df321a.h"
 
 static uint8_t spi_initialized = 0;

@@ -1,5 +1,5 @@
-#ifndef OLED_H
-#define OLED_H
+#ifndef OLED_DRIVER_H
+#define OLED_DRIVER_H
 
 #include <stdint.h>
 #include <stdlib.h>

@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "swd_driver.h"
 
 // Команды AT25DF321A
 #define AT25_CMD_READ_ID         0x9F

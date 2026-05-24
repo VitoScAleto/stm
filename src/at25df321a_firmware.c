@@ -12,6 +12,17 @@
 static FirmwareManager_t firmware_manager;
 static bool initialized = false;
 
+inline void delay_us(uint32_t us);
+
+ inline void delay_us(uint32_t us)
+{
+    uint32_t cycles = us * (SystemCoreClock / 1000000u);
+    uint32_t start = DWT->CYCCNT;
+
+    while ((DWT->CYCCNT - start) < cycles) {
+    }
+}
+
 static uint32_t CalculateCRC32(const uint8_t* data, uint32_t length) {
     uint32_t crc = 0xFFFFFFFFu;
     for(uint32_t i = 0; i < length; i++) {
@@ -69,6 +80,25 @@ static bool LoadFirmwareTable(void) {
     }
 
     return true;
+}
+int swd_prepare_target_for_program(uint32_t firmware_size)
+{
+    swd_gpio_init();
+    dwt_init();
+
+    NRST_LOW();
+    delay_us(5000);
+    NRST_HIGH();
+    delay_us(50000);
+
+    if (!swd_init_debug()) {
+        return 0;
+    }
+
+    flash_unlock_target();
+    flash_erase_all_needed(FLASH_BASE_ADDR, firmware_size);
+
+    return 1;
 }
 
 bool FindFreeAddress(uint32_t size, uint32_t* address) {
@@ -251,6 +281,84 @@ bool Firmware_Delete(uint32_t address) {
         }
     }
     return false;
+}
+
+int FlashFirmwareFromAT25_Index(uint32_t index, uint8_t use_oled)
+{
+    FirmwareHeader_t headers[MAX_FIRMWARE_COUNT];
+    uint32_t addresses[MAX_FIRMWARE_COUNT];
+
+    uint32_t count = Firmware_GetList(headers, addresses, MAX_FIRMWARE_COUNT);
+
+    if(index >= count)
+        return 0;
+
+    uint32_t firmware_size = headers[index].size;
+    uint32_t firmware_addr = addresses[index] + FIRMWARE_HEADER_SIZE;
+
+    if(firmware_size == 0u)
+        return 0;
+
+    uint32_t program_size = (firmware_size + 3u) & ~3u;
+
+    if(use_oled)
+        OLED_Status("Preparing SWD", "Please wait...");
+
+    if(!swd_prepare_target_for_program(program_size))
+        return 0;
+
+    uint8_t buffer[64];
+    uint32_t offset = 0;
+    uint32_t chunk_id = 0;
+    uint32_t total_chunks = (firmware_size + sizeof(buffer) - 1u) / sizeof(buffer);
+
+    while(offset < firmware_size)
+    {
+        uint32_t chunk = firmware_size - offset;
+        if(chunk > sizeof(buffer))
+            chunk = sizeof(buffer);
+
+        memset(buffer, 0xFF, sizeof(buffer));
+        AT25_ReadData(firmware_addr + offset, buffer, chunk);
+
+        uint32_t chunk_program_size = (chunk + 3u) & ~3u;
+
+        for(uint32_t i = 0; i < chunk_program_size; i += 4u)
+        {
+            uint32_t word =
+                ((uint32_t)buffer[i]) |
+                ((uint32_t)buffer[i + 1u] << 8) |
+                ((uint32_t)buffer[i + 2u] << 16) |
+                ((uint32_t)buffer[i + 3u] << 24);
+
+            if(!flash_program_word32(FLASH_BASE_ADDR + offset + i, word))
+            {
+                flash_lock_target();
+                return 0;
+            }
+        }
+
+        offset += chunk;
+        chunk_id++;
+
+        if(use_oled)
+        {
+            char line[32];
+            snprintf(line, sizeof(line), "%lu/%lu",
+                     (unsigned long)chunk_id,
+                     (unsigned long)total_chunks);
+
+            OLED_Status("Flashing AT25", line);
+        }
+        else
+        {
+            UART_SendByte(RESP_OK);
+        }
+    }
+
+    flash_lock_target();
+
+    return 1;
 }
 
 bool Firmware_Format(void)
