@@ -1,7 +1,6 @@
 #include "../inc/swd.h"
 #include <stdint.h>
 #include <stdio.h>
-#include "i2c_at24c256.c"
 #include "../inc/oled.h"
 
 #include "../inc/at25df321a_firmware.h"

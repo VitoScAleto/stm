@@ -25,6 +25,7 @@ namespace SWD
         private const byte CmdEepromRead = (byte)'R';
         private const byte CmdEepromInfo = (byte)'I';
         private const byte RespOk = (byte)'K';
+        private const byte CmdEepromFormat = (byte)'X';
         private const byte RespErr = (byte)'E';
         private const byte CmdEepromVerify = (byte)'V';
         private const byte CmdEepromDelete = (byte)'D';
@@ -281,7 +282,99 @@ namespace SWD
 
             await EndProgrammingAsync(port);
         }
+        private async Task<bool> FormatAt25Async(SerialPort port)
+        {
+            Log("Send command: FORMAT_AT25 (X)");
 
+            port.Write(new[] { CmdEepromFormat }, 0, 1);
+
+            byte[] resp = new byte[1];
+
+            // STM32 принял команду
+            bool ok = await ReadExactAsync(port, resp, 1, 3000);
+
+            if (!ok)
+                throw new IOException("STM32 не принял команду FORMAT.");
+
+            if (resp[0] != RespOk)
+                return false;
+
+            Log("FORMAT accepted, waiting...");
+
+            // Ждём сколько угодно
+            while (true)
+            {
+                try
+                {
+                    if (port.BytesToRead > 0)
+                    {
+                        int value = port.ReadByte();
+
+                        Log($"FORMAT final response: 0x{value:X2} ({(char)value})");
+
+                        return value == RespOk;
+                    }
+                }
+                catch
+                {
+                }
+
+                await Task.Delay(100);
+                Application.DoEvents();
+            }
+        }
+        private async void btnFormatAt25_Click(object sender, EventArgs e)
+        {
+            var confirm = MessageBox.Show(
+                "Полностью очистить память AT25?\n\nВсе сохранённые прошивки будут удалены.",
+                "Format AT25",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+
+            if (confirm != DialogResult.Yes)
+                return;
+
+            SetUiEnabled(false);
+            progressBar.Value = 0;
+            lblStatus.Text = "Formatting AT25...";
+
+            try
+            {
+                using (SerialPort port = OpenSelectedPort())
+                {
+                    bool ok = await FormatAt25Async(port);
+
+                    if (!ok)
+                        throw new IOException("Не удалось отформатировать AT25.");
+                }
+
+                cbFirmwareList.Items.Clear();
+
+                lblStatus.Text = "AT25 formatted";
+                Log("AT25 format complete");
+
+                MessageBox.Show(
+                    "Память AT25 успешно отформатирована.",
+                    "Успех",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                Log("ERROR: " + ex.Message);
+                lblStatus.Text = "Error";
+
+                MessageBox.Show(
+                    ex.Message,
+                    "Ошибка форматирования",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            finally
+            {
+                SetUiEnabled(true);
+            }
+        }
         private async Task<bool> CheckTargetAsync(SerialPort port)
         {
             Log("Send command: CHECK_TARGET (C)");
@@ -783,7 +876,7 @@ namespace SWD
             btnVerifyFirmware.Enabled = enabled;
             btnFlashFileSwd.Enabled = enabled;
             btnMemoryInfo.Enabled = enabled;
-
+            btnFormatAt25.Enabled = enabled;
             cbPorts.Enabled = enabled;
             cbFirmwareList.Enabled = enabled;
             tbFirmwareName.Enabled = enabled;

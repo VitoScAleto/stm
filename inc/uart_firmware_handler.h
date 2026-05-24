@@ -20,6 +20,7 @@
 #define RESP_ERR             'E'  // Ошибка
 #define RESP_BUSY            'B'  // Занято
 #define RESP_WAIT            'W'  // Ожидание данных
+#define CMD_EEPROM_FORMAT    'X'  // Полное форматирование AT25
 
 // Протокол передачи
 typedef struct {
@@ -58,4 +59,5 @@ void CMD_DeleteFirmware(void);
 void CMD_ActivateFirmware(void);
 void CMD_GetMemoryInfo(void);
 void CMD_VerifyFirmware(void);
+void CMD_FormatMemory(void);
 #endif // UART_FIRMWARE_HANDLER_H

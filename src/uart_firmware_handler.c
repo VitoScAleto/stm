@@ -96,7 +96,14 @@ bool UART_ReceiveData(uint8_t* buffer, uint32_t length, uint32_t timeout_ms) {
 
 void UART_Firmware_Init(void) {
     Firmware_Init();
-    UART_SendString("\r\nUART Firmware Handler Initialized\r\n");
+   
+}
+
+void CMD_FormatMemory(void)
+{
+    UART_SendResponse(RESP_OK);
+    bool ok = Firmware_Format();
+    UART_SendResponse(ok ? RESP_OK : RESP_ERR);
 }
 
 void UART_Firmware_ProcessCommand(uint8_t cmd) {
@@ -111,9 +118,8 @@ void UART_Firmware_ProcessCommand(uint8_t cmd) {
         case CMD_EEPROM_DELETE:   CMD_DeleteFirmware(); break;
         case CMD_EEPROM_ACTIVATE: CMD_ActivateFirmware(); break;
         case CMD_EEPROM_INFO:     CMD_GetMemoryInfo(); break;
-        case CMD_EEPROM_VERIFY:
-    CMD_VerifyFirmware();
-    break;
+        case CMD_EEPROM_VERIFY:   CMD_VerifyFirmware();break;
+        case CMD_EEPROM_FORMAT:    CMD_FormatMemory(); break;
         default:                  UART_SendResponse(RESP_ERR); break;
     }
 }

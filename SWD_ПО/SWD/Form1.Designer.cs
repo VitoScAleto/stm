@@ -49,9 +49,21 @@
             this.btnFlashFileSwd = new System.Windows.Forms.Button();
             this.lblFirmwareName = new System.Windows.Forms.Label();
             this.tbFirmwareName = new System.Windows.Forms.TextBox();
-
+            this.btnFormatAt25 = new System.Windows.Forms.Button();
             this.SuspendLayout();
             // 
+            // 
+            // btnFormatAt25
+            // 
+            this.btnFormatAt25.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnFormatAt25.Location = new System.Drawing.Point(570, 408);
+            this.btnFormatAt25.Name = "btnFormatAt25";
+            this.btnFormatAt25.Size = new System.Drawing.Size(110, 23);
+            this.btnFormatAt25.TabIndex = 21;
+            this.btnFormatAt25.Text = "Format AT25";
+            this.btnFormatAt25.UseVisualStyleBackColor = true;
+            this.btnFormatAt25.Click += new System.EventHandler(this.btnFormatAt25_Click);
+
             // tbLog
             // 
             this.tbLog.Location = new System.Drawing.Point(12, 12);
@@ -271,6 +283,7 @@
             this.Controls.Add(this.btnRefreshPorts);
             this.Controls.Add(this.cbPorts);
             this.Controls.Add(this.lblPort);
+            this.Controls.Add(this.btnFormatAt25);
             this.Name = "Form1";
             this.Text = "Form1";
             this.ResumeLayout(false);
@@ -300,5 +313,6 @@
         private System.Windows.Forms.Button btnFlashFileSwd;
         private System.Windows.Forms.Label lblFirmwareName;
         private System.Windows.Forms.TextBox tbFirmwareName;
+        private System.Windows.Forms.Button btnFormatAt25;
     }
 }

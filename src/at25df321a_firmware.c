@@ -253,15 +253,23 @@ bool Firmware_Delete(uint32_t address) {
     return false;
 }
 
-bool Firmware_Format(void) {
+bool Firmware_Format(void)
+{
     if(!initialized) Firmware_Init();
 
-    for(uint32_t addr = FIRMWARE_START_ADDRESS; addr < FIRMWARE_DATA_END_ADDRESS; addr += AT25_BLOCK_64K_SIZE) {
-        AT25_Block64KErase(addr);
+    AT25_ForceUnprotect();
+
+    for(uint32_t addr = FIRMWARE_START_ADDRESS;
+        addr < FIRMWARE_DATA_END_ADDRESS;
+        addr += AT25_BLOCK_64K_SIZE)
+    {
+        if(!AT25_Block64KErase(addr))
+            return false;
     }
 
     memset(&firmware_manager, 0, sizeof(FirmwareManager_t));
     firmware_manager.firmware_count = 0;
+
     return SaveFirmwareTable();
 }
 
