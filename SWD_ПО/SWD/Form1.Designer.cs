@@ -227,7 +227,7 @@
             this.buttonDeleteFromEeprom.Name = "buttonDeleteFromEeprom";
             this.buttonDeleteFromEeprom.Size = new System.Drawing.Size(160, 23);
             this.buttonDeleteFromEeprom.TabIndex = 15;
-            this.buttonDeleteFromEeprom.Text = "Delete from EEPROM";
+            this.buttonDeleteFromEeprom.Text = "Delete from AT25";
             this.buttonDeleteFromEeprom.UseVisualStyleBackColor = true;
             this.buttonDeleteFromEeprom.Click += new System.EventHandler(this.buttonDeleteFromEeprom_Click);
             // 
@@ -284,8 +284,8 @@
             this.Controls.Add(this.cbPorts);
             this.Controls.Add(this.lblPort);
             this.Controls.Add(this.btnFormatAt25);
-            this.Name = "Form1";
-            this.Text = "Form1";
+            this.Name = "ПМК-STM";
+            this.Text = "ПМК-STM";
             this.ResumeLayout(false);
             this.PerformLayout();
         }
